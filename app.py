@@ -1,6 +1,6 @@
 import streamlit as st
 import nltk
-from nltk.tokenize import word_tokenize, sent_tokenize
+from nltk.tokenize import word_tokenize
 from nltk import pos_tag
 from nltk.corpus import wordnet as wn
 from spellchecker import SpellChecker
@@ -11,12 +11,7 @@ NLTK_DATA_PATH = "./nltk_data"
 os.makedirs(NLTK_DATA_PATH, exist_ok=True)
 nltk.data.path.append(NLTK_DATA_PATH)
 
-def safe_download(path, name):
-    try:
-        nltk.data.find(path)
-    except LookupError:
-        nltk.download(name, download_dir=NLTK_DATA_PATH)
-
+# Ensure necessary resources are downloaded
 resources = [
     ("tokenizers/punkt", "punkt"),
     ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
@@ -24,11 +19,27 @@ resources = [
     ("corpora/omw-1.4", "omw-1.4"),
     ("corpora/stopwords", "stopwords"),
 ]
-
 for path, name in resources:
-    safe_download(path, name)
+    try:
+        nltk.data.find(path)
+    except LookupError:
+        nltk.download(name, download_dir=NLTK_DATA_PATH)
 
-# Initialize spell checker
+# Forcefully load `punkt` to avoid `punkt_tab` error
+try:
+    from nltk.tokenize.punkt import PunktSentenceTokenizer, PunktTrainer
+    _ = PunktSentenceTokenizer()
+except Exception as e:
+    nltk.download('punkt', download_dir=NLTK_DATA_PATH)
+
+# Lazy import pywsd after everything is ready
+try:
+    from pywsd.lesk import cosine_lesk
+except Exception as e:
+    st.error("❌ pywsd failed to import. Make sure it's installed.")
+    st.stop()
+
+# Spell checker
 spell = SpellChecker()
 
 # ========== Helper Functions ==========
@@ -57,9 +68,6 @@ def correct_spelling(text):
     return ' '.join(corrected_tokens)
 
 def process_input(user_input):
-    # Lazy import AFTER NLTK setup
-    from pywsd.lesk import cosine_lesk
-
     corrected = correct_spelling(user_input)
     tokens = word_tokenize(corrected)
     pos_tags = pos_tag(tokens)
@@ -67,8 +75,6 @@ def process_input(user_input):
 
     for word, tag in pos_tags:
         wn_pos = get_wordnet_pos(tag)
-
-        # Custom override for river + bank
         if word.lower() == "bank" and "river" in [t.lower() for t in tokens]:
             disambiguated[word] = "sloping land (especially the slope beside a body of water)"
         else:
