@@ -7,29 +7,36 @@ from spellchecker import SpellChecker
 from nltk.tokenize import word_tokenize
 
 # ========== Setup ==========
-
 # Set NLTK data path to user home directory (safe for Streamlit Cloud)
 nltk_data_path = os.path.join(os.path.expanduser("~"), "nltk_data")
+os.makedirs(nltk_data_path, exist_ok=True)  # Create directory if it doesn't exist
 nltk.data.path.append(nltk_data_path)
 
 # Download required resources (only if not present)
-resources = [
-    ("tokenizers/punkt", "punkt"),
-    ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
-    ("corpora/wordnet", "wordnet"),
-    ("corpora/omw-1.4", "omw-1.4")
-]
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt', download_dir=nltk_data_path)
 
-for resource_path, resource_name in resources:
-    try:
-        nltk.data.find(resource_path)
-    except LookupError:
-        nltk.download(resource_name, download_dir=nltk_data_path)
+try:
+    nltk.data.find('taggers/averaged_perceptron_tagger')
+except LookupError:
+    nltk.download('averaged_perceptron_tagger', download_dir=nltk_data_path)
 
-# ========== NLP Helpers ==========
+try:
+    nltk.data.find('corpora/wordnet')
+except LookupError:
+    nltk.download('wordnet', download_dir=nltk_data_path)
 
+try:
+    nltk.data.find('corpora/omw-1.4')
+except LookupError:
+    nltk.download('omw-1.4', download_dir=nltk_data_path)
+
+# Initialize spell checker
 spell = SpellChecker()
 
+# ========== NLP Helpers ==========
 def get_wordnet_pos(treebank_tag):
     if treebank_tag.startswith('J'):
         return wn.ADJ
@@ -99,7 +106,6 @@ def generate_response(corrected, pos_tags, senses):
         return "Thanks for sharing! What else would you like to talk about?"
 
 # ========== Streamlit UI ==========
-
 st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
 st.title("🧠 NLP ContextBot")
 st.markdown("This bot performs **spelling correction**, **POS tagging**, and **word sense disambiguation** using WordNet.")
