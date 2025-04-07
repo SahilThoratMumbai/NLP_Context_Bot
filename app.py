@@ -1,32 +1,36 @@
 import streamlit as st
 import nltk
+import os
 from nltk.tokenize import word_tokenize
 from nltk import pos_tag
 from nltk.corpus import wordnet as wn
 from spellchecker import SpellChecker
-import os
 
-# ========== NLTK Setup ==========
+# ========== Setup ==========
+
 NLTK_DATA_PATH = "./nltk_data"
 os.makedirs(NLTK_DATA_PATH, exist_ok=True)
 nltk.data.path.append(NLTK_DATA_PATH)
 
-# Download required NLTK resources
-required_resources = [
+def safe_download(resource_path, resource_name):
+    try:
+        nltk.data.find(resource_path)
+    except LookupError:
+        nltk.download(resource_name, download_dir=NLTK_DATA_PATH)
+
+resources = [
     ("tokenizers/punkt", "punkt"),
     ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
     ("corpora/wordnet", "wordnet"),
     ("corpora/omw-1.4", "omw-1.4"),
-    ("corpora/stopwords", "stopwords"),
+    ("corpora/stopwords", "stopwords")
 ]
 
-for path, resource in required_resources:
-    try:
-        nltk.data.find(path)
-    except LookupError:
-        nltk.download(resource, download_dir=NLTK_DATA_PATH)
+for path, name in resources:
+    safe_download(path, name)
 
-# ========== Helper Functions ==========
+# ========== NLP Helpers ==========
+
 spell = SpellChecker()
 
 def get_wordnet_pos(treebank_tag):
@@ -98,6 +102,7 @@ def generate_response(corrected, pos_tags, senses):
         return "Thanks for sharing! What else would you like to talk about?"
 
 # ========== Streamlit UI ==========
+
 st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
 st.title("🧠 NLP ContextBot")
 st.markdown("This chatbot performs **spelling correction**, **POS tagging**, and **word sense disambiguation** using WordNet.")
