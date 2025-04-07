@@ -1,6 +1,7 @@
 import streamlit as st
 import nltk
 import os
+import shutil
 from nltk.tokenize import word_tokenize
 from nltk import pos_tag
 from nltk.corpus import wordnet as wn
@@ -9,6 +10,12 @@ from spellchecker import SpellChecker
 # ========== Setup ==========
 
 NLTK_DATA_PATH = "./nltk_data"
+
+# Clean up corrupted nltk_data folder
+if os.path.exists(NLTK_DATA_PATH):
+    shutil.rmtree(NLTK_DATA_PATH)
+
+# Recreate and set up path
 os.makedirs(NLTK_DATA_PATH, exist_ok=True)
 nltk.data.path.append(NLTK_DATA_PATH)
 
