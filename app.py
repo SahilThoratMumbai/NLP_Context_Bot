@@ -6,13 +6,12 @@ from nltk.corpus import wordnet as wn
 from spellchecker import SpellChecker
 import os
 
-# ========== Setup ==========
-# Local nltk_data path for deployment
+# ========== NLTK Setup ==========
 NLTK_DATA_PATH = "./nltk_data"
 os.makedirs(NLTK_DATA_PATH, exist_ok=True)
 nltk.data.path.append(NLTK_DATA_PATH)
 
-# Force download essential resources if missing
+# Download required NLTK resources
 required_resources = [
     ("tokenizers/punkt", "punkt"),
     ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
@@ -25,10 +24,9 @@ for path, resource in required_resources:
     try:
         nltk.data.find(path)
     except LookupError:
-        nltk.download(resource, download_dir=NLTK_DATA_PATH, force=True)
+        nltk.download(resource, download_dir=NLTK_DATA_PATH)
 
 # ========== Helper Functions ==========
-
 spell = SpellChecker()
 
 def get_wordnet_pos(treebank_tag):
@@ -100,7 +98,6 @@ def generate_response(corrected, pos_tags, senses):
         return "Thanks for sharing! What else would you like to talk about?"
 
 # ========== Streamlit UI ==========
-
 st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
 st.title("🧠 NLP ContextBot")
 st.markdown("This chatbot performs **spelling correction**, **POS tagging**, and **word sense disambiguation** using WordNet.")
