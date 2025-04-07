@@ -3,24 +3,20 @@ import nltk
 from nltk.tokenize import word_tokenize, sent_tokenize
 from nltk import pos_tag
 from nltk.corpus import wordnet as wn
-from pywsd.lesk import cosine_lesk
 from spellchecker import SpellChecker
 import os
 
 # ========== Setup ==========
-# Ensure local nltk_data path exists
 NLTK_DATA_PATH = "./nltk_data"
 os.makedirs(NLTK_DATA_PATH, exist_ok=True)
 nltk.data.path.append(NLTK_DATA_PATH)
 
-# Safe downloader for NLTK resources
 def safe_download(path, name):
     try:
         nltk.data.find(path)
     except LookupError:
         nltk.download(name, download_dir=NLTK_DATA_PATH)
 
-# Required NLTK resources
 resources = [
     ("tokenizers/punkt", "punkt"),
     ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
@@ -31,10 +27,6 @@ resources = [
 
 for path, name in resources:
     safe_download(path, name)
-
-# Patch pywsd tokenizer to avoid punkt_tab error
-import pywsd
-pywsd.lesk.sents = lambda text: [sent_tokenize(text)]
 
 # Initialize spell checker
 spell = SpellChecker()
@@ -65,6 +57,9 @@ def correct_spelling(text):
     return ' '.join(corrected_tokens)
 
 def process_input(user_input):
+    # Lazy import AFTER NLTK setup
+    from pywsd.lesk import cosine_lesk
+
     corrected = correct_spelling(user_input)
     tokens = word_tokenize(corrected)
     pos_tags = pos_tag(tokens)
