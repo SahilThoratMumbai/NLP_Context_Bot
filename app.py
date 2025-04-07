@@ -1,18 +1,24 @@
 import streamlit as st
 import nltk
-from nltk.tokenize import word_tokenize
+from nltk.tokenize import word_tokenize, RegexpTokenizer
 from nltk import pos_tag
 from nltk.corpus import wordnet as wn
 from spellchecker import SpellChecker
 import os
+import shutil
 
 # ========== Setup ==========
-# Local nltk_data path for Streamlit deployments
+
+# Local nltk_data path for deployment
 NLTK_DATA_PATH = "./nltk_data"
 os.makedirs(NLTK_DATA_PATH, exist_ok=True)
 nltk.data.path.append(NLTK_DATA_PATH)
 
-# Download essential resources safely
+# Remove corrupted punkt if needed
+if os.path.exists(os.path.join(NLTK_DATA_PATH, "tokenizers/punkt")):
+    shutil.rmtree(os.path.join(NLTK_DATA_PATH, "tokenizers/punkt"), ignore_errors=True)
+
+# Download necessary resources
 resources = [
     ("tokenizers/punkt", "punkt"),
     ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
@@ -31,7 +37,6 @@ for path, name in resources:
 spell = SpellChecker()
 
 def get_wordnet_pos(treebank_tag):
-    """Map POS tag to WordNet format"""
     if treebank_tag.startswith('J'):
         return wn.ADJ
     elif treebank_tag.startswith('V'):
@@ -41,10 +46,16 @@ def get_wordnet_pos(treebank_tag):
     elif treebank_tag.startswith('R'):
         return wn.ADV
     else:
-        return wn.NOUN  # Default
+        return wn.NOUN
 
 def correct_spelling(text):
-    tokens = word_tokenize(text)
+    try:
+        tokens = word_tokenize(text)
+    except LookupError:
+        # fallback if punkt still misbehaves
+        tokenizer = RegexpTokenizer(r'\w+')
+        tokens = tokenizer.tokenize(text)
+
     corrected = []
     for word in tokens:
         if word.lower() not in spell:
@@ -55,10 +66,14 @@ def correct_spelling(text):
     return ' '.join(corrected)
 
 def simple_lesk_definition(word, context_sentence, pos=None):
-    """Simplified Lesk algorithm using overlaps with WordNet glosses"""
     max_overlap = 0
     best_sense = None
-    context = set(word_tokenize(context_sentence))
+    try:
+        context = set(word_tokenize(context_sentence))
+    except LookupError:
+        tokenizer = RegexpTokenizer(r'\w+')
+        context = set(tokenizer.tokenize(context_sentence))
+
     for sense in wn.synsets(word, pos=pos):
         signature = set(word_tokenize(sense.definition()))
         overlap = len(context.intersection(signature))
