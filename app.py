@@ -6,42 +6,36 @@ from nltk.corpus import wordnet as wn
 from nltk.tokenize import word_tokenize
 
 # ========== Setup ==========
-# Configure NLTK data path
-nltk_data_path = os.path.join(os.path.expanduser("~"), "nltk_data")
+# Configure NLTK data path - works in both local and cloud environments
+nltk_data_path = os.path.join(os.getcwd(), "nltk_data")
 os.makedirs(nltk_data_path, exist_ok=True)
 nltk.data.path.append(nltk_data_path)
 
-# Download required NLTK data
-required_data = [
-    ('punkt', 'tokenizers/punkt'),
-    ('averaged_perceptron_tagger', 'taggers/averaged_perceptron_tagger'),
-    ('wordnet', 'corpora/wordnet'),
-    ('omw-1.4', 'corpora/omw-1.4')
-]
+# Download required NLTK data with explicit path handling
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt', download_dir=nltk_data_path)
 
-for resource, path in required_data:
-    try:
-        nltk.data.find(path)
-    except LookupError:
-        nltk.download(resource, download_dir=nltk_data_path)
+try:
+    nltk.data.find('taggers/averaged_perceptron_tagger')
+except LookupError:
+    nltk.download('averaged_perceptron_tagger', download_dir=nltk_data_path)
 
-# Custom spelling correction to avoid SpellChecker dependency
-class SimpleSpellChecker:
-    def __init__(self):
-        self.common_words = {
-            'hello', 'hi', 'bank', 'book', 'love', 'river',
-            'financial', 'institution', 'knowledge', 'emotion'
-        }
-    
-    def correction(self, word):
-        return word  # Simple implementation - doesn't actually correct
-    
-    def __contains__(self, word):
-        return word.lower() in self.common_words
+try:
+    nltk.data.find('corpora/wordnet')
+except LookupError:
+    nltk.download('wordnet', download_dir=nltk_data_path)
 
-spell = SimpleSpellChecker()
+try:
+    nltk.data.find('corpora/omw-1.4')
+except LookupError:
+    nltk.download('omw-1.4', download_dir=nltk_data_path)
 
-# ========== NLP Helpers ==========
+# Force NLTK to use our downloaded data
+nltk.data.path = [nltk_data_path] + nltk.data.path
+
+# ========== NLP Functions ==========
 def get_wordnet_pos(treebank_tag):
     if treebank_tag.startswith('J'):
         return wn.ADJ
@@ -54,76 +48,48 @@ def get_wordnet_pos(treebank_tag):
     else:
         return wn.NOUN
 
-def correct_spelling(text):
+def process_text(text):
     tokens = word_tokenize(text)
-    return ' '.join(tokens)  # Skip actual correction for now
-
-def simple_lesk_definition(word, context_sentence, pos=None):
-    max_overlap = 0
-    best_sense = None
-    context = set(word_tokenize(context_sentence.lower()))
-    
-    for sense in wn.synsets(word, pos=pos):
-        signature = set()
-        signature.update(word_tokenize(sense.definition().lower()))
-        for example in sense.examples():
-            signature.update(word_tokenize(example.lower()))
-        
-        overlap = len(context.intersection(signature))
-        if overlap > max_overlap:
-            max_overlap = overlap
-            best_sense = sense
-    
-    return best_sense.definition() if best_sense else None
-
-def process_input(user_input):
-    corrected = correct_spelling(user_input)
-    tokens = word_tokenize(corrected)
     tags = pos_tag(tokens)
     senses = {}
-
+    
     for word, tag in tags:
         wn_pos = get_wordnet_pos(tag)
         if word.lower() == "bank":
-            senses[word] = "financial institution" if "money" in corrected.lower() else "river bank"
+            senses[word] = "financial institution" if "money" in text.lower() else "river bank"
         else:
-            definition = simple_lesk_definition(word, corrected, wn_pos)
-            if definition:
-                senses[word] = definition
+            synsets = wn.synsets(word, pos=wn_pos)
+            if synsets:
+                senses[word] = synsets[0].definition()
     
-    return corrected, tags, senses
+    return tokens, tags, senses
 
-def generate_response(corrected, pos_tags, senses):
-    lowered = corrected.lower()
-    if "bank" in senses:
-        return "Talking about finances?" if "financial" in senses["bank"] else "Nice river view!"
-    elif any(w in lowered for w in ["book", "read"]):
-        return "I love reading too!"
-    elif "love" in lowered:
-        return "Love is wonderful!"
-    return "Interesting! Tell me more."
-
-# ========== Streamlit UI ==========
+# ========== Streamlit App ==========
 st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
 st.title("🧠 NLP ContextBot")
-st.markdown("This bot demonstrates word sense disambiguation using WordNet.")
 
-user_input = st.text_input("You:", key="input")
+user_input = st.text_input("Enter your text:")
 
 if user_input:
     try:
-        corrected, tags, senses = process_input(user_input)
+        tokens, tags, senses = process_text(user_input)
         
-        st.markdown("### Processing Results")
-        st.json({
-            "Corrected Text": corrected,
-            "POS Tags": tags,
-            "Word Senses": senses
-        })
+        st.subheader("Analysis Results")
+        col1, col2 = st.columns(2)
         
-        response = generate_response(corrected, tags, senses)
-        st.markdown(f"### 🤖 Bot: {response}")
+        with col1:
+            st.write("**Tokens:**", tokens)
+            st.write("**POS Tags:**", tags)
         
+        with col2:
+            st.write("**Word Senses:**")
+            for word, sense in senses.items():
+                st.write(f"- {word}: {sense}")
+        
+        if "bank" in senses:
+            st.success("Financial context detected!" if "financial" in senses["bank"] 
+                      else "Nature context detected!")
+    
     except Exception as e:
         st.error(f"Error: {str(e)}")
-        st.info("Note: The bot is using simplified text processing for this demo.")
+        st.info("If you see NLTK resource errors, try refreshing the page.")
