@@ -97,7 +97,7 @@ def generate_response(corrected, pos_tags, senses):
         return "Thanks for sharing! What else would you like to talk about?"
 
 # ===== Streamlit UI =====
-st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
+st.set_page_config(page_title="NLP ContextBott", page_icon="🧠")
 st.title("🧠 NLP ContextBot")
 st.markdown("This bot performs **spelling correction**, **POS tagging**, and **word sense disambiguation** using WordNet.")
 
