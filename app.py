@@ -1,35 +1,41 @@
 import streamlit as st
 import nltk
+from nltk.tokenize import word_tokenize
 from nltk import pos_tag
 from nltk.corpus import wordnet as wn
 from spellchecker import SpellChecker
-from nltk.tokenize import word_tokenize
 import os
 
-# Set custom NLTK path
-NLTK_DATA_PATH = os.path.join(os.getcwd(), "nltk_data")
+# ========== Setup ==========
+
+# Local nltk_data path for Streamlit deployments
+NLTK_DATA_PATH = "./nltk_data"
 os.makedirs(NLTK_DATA_PATH, exist_ok=True)
+
+# Force only the local nltk_data path
+nltk.data.path.clear()
 nltk.data.path.append(NLTK_DATA_PATH)
 
-# Force download the correct resources
-required_nltk_packages = [
-    "punkt",
-    "averaged_perceptron_tagger",
-    "wordnet",
-    "omw-1.4"
+# Download essential resources safely
+resources = [
+    ("tokenizers/punkt", "punkt"),
+    ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
+    ("corpora/wordnet", "wordnet"),
+    ("corpora/omw-1.4", "omw-1.4"),
+    ("corpora/stopwords", "stopwords"),
 ]
-
-for package in required_nltk_packages:
+for path, name in resources:
     try:
-        nltk.data.find(package)
+        nltk.data.find(path)
     except LookupError:
-        nltk.download(package, download_dir=NLTK_DATA_PATH)
+        nltk.download(name, download_dir=NLTK_DATA_PATH)
 
-# Spell checker
+# ========== Helper Functions ==========
+
 spell = SpellChecker()
 
-# POS to WordNet POS mapping
 def get_wordnet_pos(treebank_tag):
+    """Map POS tag to WordNet format"""
     if treebank_tag.startswith('J'):
         return wn.ADJ
     elif treebank_tag.startswith('V'):
@@ -39,51 +45,48 @@ def get_wordnet_pos(treebank_tag):
     elif treebank_tag.startswith('R'):
         return wn.ADV
     else:
-        return wn.NOUN
+        return wn.NOUN  # Default
 
-# Spelling correction
 def correct_spelling(text):
     tokens = word_tokenize(text)
     corrected = []
     for word in tokens:
         if word.lower() not in spell:
-            corrected_word = spell.correction(word)
-            corrected.append(corrected_word if corrected_word else word)
+            suggestion = spell.correction(word)
+            corrected.append(suggestion if suggestion else word)
         else:
             corrected.append(word)
-    return " ".join(corrected)
+    return ' '.join(corrected)
 
-# Simple Lesk-based WSD
-def simple_lesk_definition(word, sentence, pos=None):
-    context = set(word_tokenize(sentence))
+def simple_lesk_definition(word, context_sentence, pos=None):
+    """Simplified Lesk algorithm using overlaps with WordNet glosses"""
     max_overlap = 0
     best_sense = None
+    context = set(word_tokenize(context_sentence))
     for sense in wn.synsets(word, pos=pos):
         signature = set(word_tokenize(sense.definition()))
         overlap = len(context.intersection(signature))
         if overlap > max_overlap:
-            best_sense = sense
             max_overlap = overlap
+            best_sense = sense
     return best_sense.definition() if best_sense else None
 
-# NLP pipeline
-def process_input(text):
-    corrected = correct_spelling(text)
+def process_input(user_input):
+    corrected = correct_spelling(user_input)
     tokens = word_tokenize(corrected)
-    tagged = pos_tag(tokens)
+    tags = pos_tag(tokens)
     senses = {}
 
-    for word, tag in tagged:
+    for word, tag in tags:
         wn_pos = get_wordnet_pos(tag)
         if word.lower() == "bank" and "river" in [t.lower() for t in tokens]:
             senses[word] = "sloping land (especially the slope beside a body of water)"
         else:
-            meaning = simple_lesk_definition(word, corrected, pos=wn_pos)
-            if meaning:
-                senses[word] = meaning
-    return corrected, tagged, senses
+            definition = simple_lesk_definition(word, corrected, pos=wn_pos)
+            if definition:
+                senses[word] = definition
+    return corrected, tags, senses
 
-# Bot logic
 def generate_response(corrected, pos_tags, senses):
     lowered = corrected.lower()
     if "bank" in lowered:
@@ -101,23 +104,25 @@ def generate_response(corrected, pos_tags, senses):
     else:
         return "Thanks for sharing! What else would you like to talk about?"
 
-# Streamlit UI
+# ========== Streamlit UI ==========
+
 st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
 st.title("🧠 NLP ContextBot")
-st.markdown("This bot performs **spelling correction**, **POS tagging**, and **word sense disambiguation** using WordNet.")
+st.markdown("This chatbot performs **spelling correction**, **POS tagging**, and **word sense disambiguation** using WordNet.")
 
 user_input = st.text_input("You:", key="input")
 
 if user_input:
-    if user_input.lower() == "exit":
+    if user_input.lower() == 'exit':
         st.markdown("### 👋 Bot: Goodbye!")
     else:
         try:
             corrected, pos_tags, senses = process_input(user_input)
             response = generate_response(corrected, pos_tags, senses)
+
             st.markdown(f"**🔤 Corrected Input:** `{corrected}`")
             st.markdown(f"**🔠 POS Tags:** `{pos_tags}`")
             st.markdown(f"**🧠 Word Senses:** `{senses}`")
             st.markdown(f"### 🤖 Bot: {response}")
         except Exception as e:
-            st.error(f"⚠️ Error: {str(e)}")
+            st.error(f"⚠️ Something went wrong: {str(e)}")
