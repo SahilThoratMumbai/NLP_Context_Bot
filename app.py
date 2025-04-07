@@ -3,38 +3,26 @@ import nltk
 import os
 from nltk import pos_tag
 from nltk.corpus import wordnet as wn
-from spellchecker import SpellChecker
 from nltk.tokenize import word_tokenize
+from spellchecker import SpellChecker
 
 # ========== Setup ==========
-# Set NLTK data path to user home directory (safe for Streamlit Cloud)
+# Set NLTK data path to user home directory
 nltk_data_path = os.path.join(os.path.expanduser("~"), "nltk_data")
-os.makedirs(nltk_data_path, exist_ok=True)  # Create directory if it doesn't exist
+os.makedirs(nltk_data_path, exist_ok=True)
 nltk.data.path.append(nltk_data_path)
 
-# Download required resources (only if not present)
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt', download_dir=nltk_data_path)
+# Download all required NLTK resources
+required_nltk = ['punkt', 'averaged_perceptron_tagger', 'wordnet', 'omw-1.4']
+for resource in required_nltk:
+    try:
+        nltk.data.find(f'tokenizers/{resource}' if resource == 'punkt' else f'taggers/{resource}' if resource == 'averaged_perceptron_tagger' else f'corpora/{resource}')
+    except LookupError:
+        nltk.download(resource, download_dir=nltk_data_path)
 
-try:
-    nltk.data.find('taggers/averaged_perceptron_tagger')
-except LookupError:
-    nltk.download('averaged_perceptron_tagger', download_dir=nltk_data_path)
-
-try:
-    nltk.data.find('corpora/wordnet')
-except LookupError:
-    nltk.download('wordnet', download_dir=nltk_data_path)
-
-try:
-    nltk.data.find('corpora/omw-1.4')
-except LookupError:
-    nltk.download('omw-1.4', download_dir=nltk_data_path)
-
-# Initialize spell checker
-spell = SpellChecker()
+# Initialize spell checker with disabled NLTK dependency
+spell = SpellChecker(language='en', distance=1)
+spell.word_frequency.load_words(['hello', 'bank', 'book', 'love'])  # Add some common words
 
 # ========== NLP Helpers ==========
 def get_wordnet_pos(treebank_tag):
@@ -80,8 +68,11 @@ def process_input(user_input):
 
     for word, tag in tags:
         wn_pos = get_wordnet_pos(tag)
-        if word.lower() == "bank" and "river" in [t.lower() for t in tokens]:
-            senses[word] = "sloping land (especially the slope beside a body of water)"
+        if word.lower() == "bank":
+            if "river" in [t.lower() for t in tokens]:
+                senses[word] = "sloping land beside a body of water"
+            else:
+                senses[word] = "financial institution"
         else:
             definition = simple_lesk_definition(word, corrected, pos=wn_pos)
             if definition:
@@ -92,12 +83,10 @@ def generate_response(corrected, pos_tags, senses):
     lowered = corrected.lower()
     if "bank" in lowered:
         meaning = senses.get("bank", "")
-        if "financial" in meaning or "money" in meaning:
+        if "financial" in meaning:
             return "Are you talking about a financial institution?"
-        elif "river" in meaning or "slope" in meaning:
-            return "Oh! You mean a river bank. Sounds peaceful."
         else:
-            return "Which type of bank are you referring to?"
+            return "Oh! You mean a river bank. Sounds peaceful!"
     elif "book" in lowered:
         return "Books are a great source of knowledge!"
     elif "love" in lowered:
@@ -125,4 +114,4 @@ if user_input:
             st.markdown(f"**🧠 Word Senses:** `{senses}`")
             st.markdown(f"### 🤖 Bot: {response}")
         except Exception as e:
-            st.error(f"⚠️ Something went wrong: {str(e)}")
+            st.error(f"⚠️ Error: {str(e)}")
