@@ -3,15 +3,16 @@ import nltk
 from nltk.tokenize import word_tokenize
 from nltk import pos_tag
 from nltk.corpus import wordnet as wn
-from nltk.wsd import lesk  # ✅ Use NLTK's built-in Lesk
 from spellchecker import SpellChecker
 import os
 
 # ========== Setup ==========
+# Local nltk_data path for Streamlit deployments
 NLTK_DATA_PATH = "./nltk_data"
 os.makedirs(NLTK_DATA_PATH, exist_ok=True)
 nltk.data.path.append(NLTK_DATA_PATH)
 
+# Download essential resources safely
 resources = [
     ("tokenizers/punkt", "punkt"),
     ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
@@ -19,19 +20,18 @@ resources = [
     ("corpora/omw-1.4", "omw-1.4"),
     ("corpora/stopwords", "stopwords"),
 ]
-
 for path, name in resources:
     try:
         nltk.data.find(path)
     except LookupError:
         nltk.download(name, download_dir=NLTK_DATA_PATH)
 
-# Spell checker
-spell = SpellChecker()
-
 # ========== Helper Functions ==========
 
+spell = SpellChecker()
+
 def get_wordnet_pos(treebank_tag):
+    """Map POS tag to WordNet format"""
     if treebank_tag.startswith('J'):
         return wn.ADJ
     elif treebank_tag.startswith('V'):
@@ -41,40 +41,50 @@ def get_wordnet_pos(treebank_tag):
     elif treebank_tag.startswith('R'):
         return wn.ADV
     else:
-        return wn.NOUN
+        return wn.NOUN  # Default
 
 def correct_spelling(text):
     tokens = word_tokenize(text)
-    corrected_tokens = []
+    corrected = []
     for word in tokens:
         if word.lower() not in spell:
-            corrected = spell.correction(word)
-            corrected_tokens.append(corrected if corrected else word)
+            suggestion = spell.correction(word)
+            corrected.append(suggestion if suggestion else word)
         else:
-            corrected_tokens.append(word)
-    return ' '.join(corrected_tokens)
+            corrected.append(word)
+    return ' '.join(corrected)
+
+def simple_lesk_definition(word, context_sentence, pos=None):
+    """Simplified Lesk algorithm using overlaps with WordNet glosses"""
+    max_overlap = 0
+    best_sense = None
+    context = set(word_tokenize(context_sentence))
+    for sense in wn.synsets(word, pos=pos):
+        signature = set(word_tokenize(sense.definition()))
+        overlap = len(context.intersection(signature))
+        if overlap > max_overlap:
+            max_overlap = overlap
+            best_sense = sense
+    return best_sense.definition() if best_sense else None
 
 def process_input(user_input):
     corrected = correct_spelling(user_input)
     tokens = word_tokenize(corrected)
-    pos_tags = pos_tag(tokens)
-    disambiguated = {}
+    tags = pos_tag(tokens)
+    senses = {}
 
-    for word, tag in pos_tags:
+    for word, tag in tags:
         wn_pos = get_wordnet_pos(tag)
-
         if word.lower() == "bank" and "river" in [t.lower() for t in tokens]:
-            disambiguated[word] = "sloping land (especially the slope beside a body of water)"
+            senses[word] = "sloping land (especially the slope beside a body of water)"
         else:
-            sense = lesk(tokens, word, pos=wn_pos)  # ✅ using nltk.wsd.lesk
-            if sense:
-                disambiguated[word] = sense.definition()
-
-    return corrected, pos_tags, disambiguated
+            definition = simple_lesk_definition(word, corrected, pos=wn_pos)
+            if definition:
+                senses[word] = definition
+    return corrected, tags, senses
 
 def generate_response(corrected, pos_tags, senses):
     lowered = corrected.lower()
-
     if "bank" in lowered:
         meaning = senses.get("bank", "")
         if "financial" in meaning or "money" in meaning:
@@ -94,7 +104,7 @@ def generate_response(corrected, pos_tags, senses):
 
 st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
 st.title("🧠 NLP ContextBot")
-st.markdown("This chatbot performs **spelling correction**, **POS tagging**, and **word sense disambiguation** using the Lesk algorithm.")
+st.markdown("This chatbot performs **spelling correction**, **POS tagging**, and **word sense disambiguation** using WordNet.")
 
 user_input = st.text_input("You:", key="input")
 
