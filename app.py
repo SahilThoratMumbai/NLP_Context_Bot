@@ -3,26 +3,8 @@ import re
 import time
 from collections import defaultdict
 import pandas as pd
-from streamlit_extras.colored_header import colored_header
-from streamlit_extras.let_it_rain import rain
-from streamlit_lottie import st_lottie
-import json
-import requests
 
-# ========== Setup ==========
-def load_lottie(url):
-    r = requests.get(url)
-    if r.status_code != 200:
-        return None
-    return r.json()
-
-# Load animations
-brain_animation = load_lottie("https://assets1.lottiefiles.com/packages/lf20_vybwn7df.json")
-book_animation = load_lottie("https://assets1.lottiefiles.com/packages/lf20_sk5h1kfn.json")
-love_animation = load_lottie("https://assets1.lottiefiles.com/packages/lf20_rycdstfb.json")
-bank_animation = load_lottie("https://assets1.lottiefiles.com/packages/lf20_0fhjyd5r.json")
-
-# ========== Self-Contained NLP ==========
+# ========== Self-Contained NLP Implementation ==========
 class NLPChatBot:
     def __init__(self):
         # Custom word senses with emojis
@@ -115,6 +97,23 @@ class NLPChatBot:
         
         return corrected, tags, senses
 
+    def generate_response(self, corrected, pos_tags, senses):
+        lowered = corrected.lower()
+        
+        if "bank" in senses:
+            if "financial" in senses["bank"]:
+                return "Are you talking about a financial institution?"
+            else:
+                return "Oh! You mean a river bank. Sounds peaceful."
+        
+        if "book" in lowered:
+            return "Books are a great source of knowledge!"
+        
+        if "love" in lowered:
+            return "Love is a beautiful emotion. Tell me more!"
+        
+        return "Thanks for sharing! What else would you like to talk about?"
+
 # ========== Beautiful UI Components ==========
 def display_pos_tags(tags):
     pos_df = pd.DataFrame(tags, columns=["Word", "POS"])
@@ -151,17 +150,17 @@ def display_word_senses(senses):
             st.markdown(f"**Meaning:** {sense}")
             st.progress(70)  # Visual indicator of confidence
 
-def show_animation(response):
+def show_emoji(response):
     if "bank" in response.lower() and "financial" in response.lower():
-        st_lottie(bank_animation, height=200, key="bank")
+        st.markdown("<h1 style='text-align: center;'>💰</h1>", unsafe_allow_html=True)
     elif "bank" in response.lower():
-        st_lottie(bank_animation, height=200, key="river")
+        st.markdown("<h1 style='text-align: center;'>🌊</h1>", unsafe_allow_html=True)
     elif "book" in response.lower():
-        st_lottie(book_animation, height=200, key="book")
+        st.markdown("<h1 style='text-align: center;'>📚</h1>", unsafe_allow_html=True)
     elif "love" in response.lower():
-        st_lottie(love_animation, height=200, key="love")
+        st.markdown("<h1 style='text-align: center;'>❤️</h1>", unsafe_allow_html=True)
     else:
-        st_lottie(brain_animation, height=200, key="default")
+        st.markdown("<h1 style='text-align: center;'>🧠</h1>", unsafe_allow_html=True)
 
 # ========== Main App ==========
 bot = NLPChatBot()
@@ -173,9 +172,26 @@ st.set_page_config(
     layout="wide"
 )
 
+# Custom header
+st.markdown("""
+<style>
+.header {
+    font-size: 2.5em;
+    color: #6a3093;
+    padding: 10px;
+    text-align: center;
+    border-bottom: 2px solid #6a3093;
+    margin-bottom: 20px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="header">✨ NLP Magic Bot</div>', unsafe_allow_html=True)
+st.markdown("Discover the magic of natural language processing")
+
 # Sidebar
 with st.sidebar:
-    st.title("✨ NLP Magic Bot")
+    st.title("About")
     st.markdown("""
     This interactive bot demonstrates:
     - 📝 Text processing
@@ -188,64 +204,39 @@ with st.sidebar:
     st.markdown("- 'The river bank is beautiful'")
     st.markdown("- 'I need to visit the bank'")
 
-# Main content
-colored_header(
-    label="✨ NLP Magic Bot",
-    description="Discover the magic of natural language processing",
-    color_name="violet-70"
-)
-
 # User input
-user_input = st.chat_input("Type your message here...")
+user_input = st.text_input("Type your message here...", key="input")
 
 if user_input:
     if user_input.lower() == 'exit':
-        rain(
-            emoji="👋",
-            font_size=40,
-            falling_speed=5,
-            animation_length=1,
-        )
         st.success("Goodbye! Refresh the page to start over.")
     else:
-        with st.spinner("🔮 Analyzing your text..."):
-            time.sleep(1)  # Simulate processing
+        with st.spinner("Analyzing your text..."):
+            time.sleep(0.5)  # Simulate processing
             
             # Process input
             corrected, pos_tags, senses = bot.process_input(user_input)
             
-            # Display results in tabs
-            tab1, tab2, tab3 = st.tabs(["📝 Results", "🏷️ POS Tags", "🔍 Word Senses"])
+            # Display results in columns
+            col1, col2 = st.columns([1, 2])
             
-            with tab1:
-                st.subheader("Corrected Text")
-                st.success(corrected)
+            with col1:
+                st.subheader("Results")
+                st.success(f"**Corrected:** {corrected}")
                 
-                st.subheader("Bot Response")
                 response = bot.generate_response(corrected, pos_tags, senses)
-                st.markdown(f"### {response}")
-                show_animation(response)
+                st.markdown(f"**Response:** {response}")
+                show_emoji(response)
             
-            with tab2:
-                st.subheader("Part-of-Speech Tags")
-                st.caption("Color-coded by word type")
-                display_pos_tags(pos_tags)
+            with col2:
+                st.subheader("Analysis")
+                tab1, tab2 = st.tabs(["POS Tags", "Word Senses"])
                 
-                # POS statistics
-                pos_counts = defaultdict(int)
-                for _, tag in pos_tags:
-                    simple_tag = 'NOUN' if tag.startswith('NN') else \
-                               'VERB' if tag.startswith('VB') else \
-                               'ADJ' if tag.startswith('JJ') else \
-                               'ADV' if tag.startswith('RB') else 'OTHER'
-                    pos_counts[simple_tag] += 1
+                with tab1:
+                    display_pos_tags(pos_tags)
                 
-                st.subheader("POS Distribution")
-                st.bar_chart(pos_counts)
+                with tab2:
+                    display_word_senses(senses)
             
-            with tab3:
-                st.subheader("Word Sense Disambiguation")
-                display_word_senses(senses)
-                
-                if senses:
-                    st.balloons()
+            # Success effect
+            st.balloons()
