@@ -1,6 +1,6 @@
 import streamlit as st
 import nltk
-from nltk.tokenize import word_tokenize
+from nltk.tokenize import word_tokenize, sent_tokenize
 from nltk import pos_tag
 from nltk.corpus import wordnet as wn
 from pywsd.lesk import cosine_lesk
@@ -13,7 +13,14 @@ NLTK_DATA_PATH = "./nltk_data"
 os.makedirs(NLTK_DATA_PATH, exist_ok=True)
 nltk.data.path.append(NLTK_DATA_PATH)
 
-# Download necessary NLTK data if not found
+# Safe downloader for NLTK resources
+def safe_download(path, name):
+    try:
+        nltk.data.find(path)
+    except LookupError:
+        nltk.download(name, download_dir=NLTK_DATA_PATH)
+
+# Required NLTK resources
 resources = [
     ("tokenizers/punkt", "punkt"),
     ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
@@ -23,18 +30,17 @@ resources = [
 ]
 
 for path, name in resources:
-    try:
-        nltk.data.find(path)
-    except LookupError:
-        nltk.download(name, download_dir=NLTK_DATA_PATH)
+    safe_download(path, name)
+
+# Patch pywsd tokenizer to avoid punkt_tab error
+import pywsd
+pywsd.lesk.sents = lambda text: [sent_tokenize(text)]
 
 # Initialize spell checker
 spell = SpellChecker()
 
-
 # ========== Helper Functions ==========
 
-# Convert POS tag to WordNet format
 def get_wordnet_pos(treebank_tag):
     if treebank_tag.startswith('J'):
         return wn.ADJ
@@ -45,10 +51,8 @@ def get_wordnet_pos(treebank_tag):
     elif treebank_tag.startswith('R'):
         return wn.ADV
     else:
-        return wn.NOUN  # default to noun
+        return wn.NOUN
 
-
-# Spell correction
 def correct_spelling(text):
     tokens = word_tokenize(text)
     corrected_tokens = []
@@ -60,8 +64,6 @@ def correct_spelling(text):
             corrected_tokens.append(word)
     return ' '.join(corrected_tokens)
 
-
-# NLP pipeline
 def process_input(user_input):
     corrected = correct_spelling(user_input)
     tokens = word_tokenize(corrected)
@@ -81,8 +83,6 @@ def process_input(user_input):
                 disambiguated[word] = sense.definition()
     return corrected, pos_tags, disambiguated
 
-
-# Response logic
 def generate_response(corrected, pos_tags, senses):
     lowered = corrected.lower()
 
@@ -94,14 +94,12 @@ def generate_response(corrected, pos_tags, senses):
             return "Oh! You mean a river bank. Sounds peaceful."
         else:
             return "Which type of bank are you referring to?"
-
     elif "book" in lowered:
         return "Books are a great source of knowledge!"
     elif "love" in lowered:
         return "Love is a beautiful emotion. Tell me more!"
     else:
         return "Thanks for sharing! What else would you like to talk about?"
-
 
 # ========== Streamlit UI ==========
 
