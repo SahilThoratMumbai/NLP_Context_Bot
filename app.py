@@ -1,46 +1,51 @@
 import streamlit as st
 import nltk
-from nltk import pos_tag
+from nltk import pos_tag, word_tokenize
 from nltk.corpus import wordnet as wn
 from spellchecker import SpellChecker
-from nltk.tokenize import word_tokenize
 import os
 
-# Use default nltk path — Streamlit Cloud handles caching properly now
-nltk.download("punkt")
-nltk.download("averaged_perceptron_tagger")
-nltk.download("wordnet")
-nltk.download("omw-1.4")
+# ✅ Setup nltk_data path and download resources if missing
+nltk_data_path = os.path.join(os.path.expanduser("~"), "nltk_data")
+os.makedirs(nltk_data_path, exist_ok=True)
+nltk.data.path.append(nltk_data_path)
 
-# Spell checker
+required_resources = [
+    "punkt",
+    "averaged_perceptron_tagger",
+    "wordnet",
+    "omw-1.4"
+]
+
+for res in required_resources:
+    try:
+        nltk.data.find(res)
+    except LookupError:
+        nltk.download(res, download_dir=nltk_data_path)
+
+# ✅ Spell checker setup
 spell = SpellChecker()
 
-# POS to WordNet POS mapping
-def get_wordnet_pos(treebank_tag):
-    if treebank_tag.startswith('J'):
+# ✅ Map POS tags to WordNet
+def get_wordnet_pos(tag):
+    if tag.startswith('J'):
         return wn.ADJ
-    elif treebank_tag.startswith('V'):
+    elif tag.startswith('V'):
         return wn.VERB
-    elif treebank_tag.startswith('N'):
+    elif tag.startswith('N'):
         return wn.NOUN
-    elif treebank_tag.startswith('R'):
+    elif tag.startswith('R'):
         return wn.ADV
     else:
         return wn.NOUN
 
-# Spelling correction
+# ✅ Spell correction
 def correct_spelling(text):
     tokens = word_tokenize(text)
-    corrected = []
-    for word in tokens:
-        if word.lower() not in spell:
-            corrected_word = spell.correction(word)
-            corrected.append(corrected_word if corrected_word else word)
-        else:
-            corrected.append(word)
+    corrected = [spell.correction(w) if w.lower() not in spell else w for w in tokens]
     return " ".join(corrected)
 
-# Simple Lesk-based WSD
+# ✅ Word Sense Disambiguation using simplified Lesk
 def simple_lesk_definition(word, sentence, pos=None):
     context = set(word_tokenize(sentence))
     max_overlap = 0
@@ -53,7 +58,7 @@ def simple_lesk_definition(word, sentence, pos=None):
             max_overlap = overlap
     return best_sense.definition() if best_sense else None
 
-# NLP pipeline
+# ✅ NLP pipeline
 def process_input(text):
     corrected = correct_spelling(text)
     tokens = word_tokenize(corrected)
@@ -62,33 +67,23 @@ def process_input(text):
 
     for word, tag in tagged:
         wn_pos = get_wordnet_pos(tag)
-        if word.lower() == "bank" and "river" in [t.lower() for t in tokens]:
-            senses[word] = "sloping land (especially the slope beside a body of water)"
-        else:
-            meaning = simple_lesk_definition(word, corrected, pos=wn_pos)
-            if meaning:
-                senses[word] = meaning
+        senses[word] = simple_lesk_definition(word, corrected, pos=wn_pos)
     return corrected, tagged, senses
 
-# Bot logic
+# ✅ Bot response generation
 def generate_response(corrected, pos_tags, senses):
     lowered = corrected.lower()
     if "bank" in lowered:
         meaning = senses.get("bank", "")
-        if "financial" in meaning or "money" in meaning:
+        if meaning and "financial" in meaning:
             return "Are you talking about a financial institution?"
-        elif "river" in meaning or "slope" in meaning:
-            return "Oh! You mean a river bank. Sounds peaceful."
+        elif meaning and "river" in meaning:
+            return "Ah, the river bank then!"
         else:
-            return "Which type of bank are you referring to?"
-    elif "book" in lowered:
-        return "Books are a great source of knowledge!"
-    elif "love" in lowered:
-        return "Love is a beautiful emotion. Tell me more!"
-    else:
-        return "Thanks for sharing! What else would you like to talk about?"
+            return "Could you clarify which bank you mean?"
+    return "Thanks for your message! Anything else on your mind?"
 
-# Streamlit UI
+# ✅ Streamlit UI
 st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
 st.title("🧠 NLP ContextBot")
 st.markdown("This bot performs **spelling correction**, **POS tagging**, and **word sense disambiguation** using WordNet.")
@@ -96,15 +91,13 @@ st.markdown("This bot performs **spelling correction**, **POS tagging**, and **w
 user_input = st.text_input("You:", key="input")
 
 if user_input:
-    if user_input.lower() == "exit":
-        st.markdown("### 👋 Bot: Goodbye!")
-    else:
-        try:
-            corrected, pos_tags, senses = process_input(user_input)
-            response = generate_response(corrected, pos_tags, senses)
-            st.markdown(f"**🔤 Corrected Input:** `{corrected}`")
-            st.markdown(f"**🔠 POS Tags:** `{pos_tags}`")
-            st.markdown(f"**🧠 Word Senses:** `{senses}`")
-            st.markdown(f"### 🤖 Bot: {response}")
-        except Exception as e:
-            st.error(f"⚠️ Error: {str(e)}")
+    try:
+        corrected, pos_tags, senses = process_input(user_input)
+        response = generate_response(corrected, pos_tags, senses)
+
+        st.markdown(f"**✅ Corrected Input:** `{corrected}`")
+        st.markdown(f"**🔠 POS Tags:** `{pos_tags}`")
+        st.markdown(f"**🧠 Word Senses:** `{senses}`")
+        st.markdown(f"### 🤖 Bot: {response}")
+    except Exception as e:
+        st.error(f"⚠️ Error: {str(e)}")
