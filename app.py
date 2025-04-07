@@ -3,6 +3,7 @@ import nltk
 from nltk.tokenize import word_tokenize
 from nltk import pos_tag
 from nltk.corpus import wordnet as wn
+from nltk.wsd import lesk  # ✅ Use NLTK's built-in Lesk
 from spellchecker import SpellChecker
 import os
 
@@ -11,7 +12,6 @@ NLTK_DATA_PATH = "./nltk_data"
 os.makedirs(NLTK_DATA_PATH, exist_ok=True)
 nltk.data.path.append(NLTK_DATA_PATH)
 
-# Ensure necessary resources are downloaded
 resources = [
     ("tokenizers/punkt", "punkt"),
     ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
@@ -19,25 +19,12 @@ resources = [
     ("corpora/omw-1.4", "omw-1.4"),
     ("corpora/stopwords", "stopwords"),
 ]
+
 for path, name in resources:
     try:
         nltk.data.find(path)
     except LookupError:
         nltk.download(name, download_dir=NLTK_DATA_PATH)
-
-# Forcefully load `punkt` to avoid `punkt_tab` error
-try:
-    from nltk.tokenize.punkt import PunktSentenceTokenizer, PunktTrainer
-    _ = PunktSentenceTokenizer()
-except Exception as e:
-    nltk.download('punkt', download_dir=NLTK_DATA_PATH)
-
-# Lazy import pywsd after everything is ready
-try:
-    from pywsd.lesk import cosine_lesk
-except Exception as e:
-    st.error("❌ pywsd failed to import. Make sure it's installed.")
-    st.stop()
 
 # Spell checker
 spell = SpellChecker()
@@ -75,13 +62,14 @@ def process_input(user_input):
 
     for word, tag in pos_tags:
         wn_pos = get_wordnet_pos(tag)
+
         if word.lower() == "bank" and "river" in [t.lower() for t in tokens]:
             disambiguated[word] = "sloping land (especially the slope beside a body of water)"
         else:
-            context = ' '.join(tokens)
-            sense = cosine_lesk(context, word, pos=wn_pos)
+            sense = lesk(tokens, word, pos=wn_pos)  # ✅ using nltk.wsd.lesk
             if sense:
                 disambiguated[word] = sense.definition()
+
     return corrected, pos_tags, disambiguated
 
 def generate_response(corrected, pos_tags, senses):
