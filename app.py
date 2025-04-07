@@ -1,5 +1,4 @@
 import streamlit as st
-from textblob import TextBlob
 import nltk
 from nltk.wsd import lesk
 from nltk.corpus import wordnet as wn
@@ -11,6 +10,7 @@ import re
 nltk.download('wordnet')
 nltk.download('punkt')
 nltk.download('averaged_perceptron_tagger')
+nltk.download('omw-1.4')
 
 # ✅ Must be the first Streamlit command
 st.set_page_config(
@@ -72,27 +72,34 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-class EnhancedNLPChatBot:
+class NLPChatBot:
     def __init__(self):
-        # Initialize conversation memory
-        self.conversation_history = []
-        
         # Word sense targets
-        self.target_words = {'bank', 'bat', 'book', 'love', 'play', 'run', 'fly', 'light'}
+        self.target_words = {'bank', 'bat', 'book', 'love'}
+        
+        # Simple dictionary for common words
+        self.dictionary = {
+            'i', 'like', 'playing', 'with', 'bat', 'bank', 'book', 'love', 'river',
+            'money', 'financial', 'water', 'read', 'knowledge', 'emotion', 'tell',
+            'more', 'share', 'thanks', 'went', 'to', 'the', 'saw', 'flying', 'deposited'
+        }
     
     def correct_spelling(self, text):
-        """Improved spelling correction using TextBlob"""
-        blob = TextBlob(text)
-        return str(blob.correct())
+        """Basic spelling correction using dictionary lookup"""
+        tokens = nltk.word_tokenize(text)
+        corrected = []
+        for word in tokens:
+            if word.lower() not in self.dictionary:
+                # Simple correction - just lowercase if not in dictionary
+                corrected.append(word.lower())
+            else:
+                corrected.append(word)
+        return ' '.join(corrected)
     
     def pos_tag(self, text):
         """POS tagging using NLTK"""
         tokens = nltk.word_tokenize(text)
         return nltk.pos_tag(tokens)
-    
-    def tokenize(self, text):
-        """Tokenization using NLTK"""
-        return nltk.word_tokenize(text)
     
     def disambiguate_word(self, word, sentence):
         """Word sense disambiguation using NLTK's Lesk algorithm"""
@@ -108,42 +115,26 @@ class EnhancedNLPChatBot:
             }
         return None
     
-    def analyze_sentiment(self, text):
-        """Sentiment analysis using TextBlob"""
-        blob = TextBlob(text)
-        return {
-            'polarity': blob.sentiment.polarity,
-            'subjectivity': blob.sentiment.subjectivity
-        }
-    
-    def generate_response(self, text, senses):
+    def generate_response(self, senses):
         """Context-aware response generation"""
-        response = ""
-        
-        # Check word senses
         if senses:
             for word, sense in senses.items():
                 if word.lower() == 'bank':
                     if 'financial' in sense['definition']:
-                        return "🏦 Talking about banking services? I can help with financial questions."
+                        return "🏦 Talking about banking services?"
                     else:
-                        return "🌊 Ah, riverbanks are such peaceful places! Are you discussing nature?"
+                        return "🌊 Ah, the peaceful riverbank!"
                 elif word.lower() == 'bat':
                     if 'mammal' in sense['definition']:
-                        return "🦇 Fascinating creatures! Did you know bats use echolocation?"
+                        return "🦇 Interesting! Bats are the only flying mammals."
                     else:
-                        return "⚾ Baseball or cricket? I love sports discussions!"
+                        return "🏏 Are you talking about baseball or cricket?"
+                elif word.lower() == 'book':
+                    return "📚 Books are wonderful sources of knowledge!"
                 elif word.lower() == 'love':
-                    return "❤️ Love is such a profound emotion. Would you like to share more?"
+                    return "❤️ Love is a powerful emotion. Tell me more!"
         
-        # Default responses based on sentiment
-        sentiment = self.analyze_sentiment(text)
-        if sentiment['polarity'] > 0.5:
-            return "😊 You seem positive! What else would you like to discuss?"
-        elif sentiment['polarity'] < -0.5:
-            return "😔 I sense some negative sentiment. Would you like to talk about it?"
-        
-        return "🤔 Interesting! Could you tell me more about that?"
+        return "🤔 Thanks for sharing! What else would you like to discuss?"
 
     def process_input(self, text):
         """Complete NLP processing pipeline"""
@@ -162,31 +153,21 @@ class EnhancedNLPChatBot:
                     senses[token] = sense
         
         # Generate response
-        response = self.generate_response(corrected, senses)
-        
-        # Update conversation history
-        self.conversation_history.append({
-            'input': text,
-            'corrected': corrected,
-            'pos_tags': pos_tags,
-            'senses': senses,
-            'response': response
-        })
+        response = self.generate_response(senses)
         
         return corrected, pos_tags, senses, response
 
 # ✨ Initialize the bot
-bot = EnhancedNLPChatBot()
+bot = NLPChatBot()
 
 # ✨ Main App UI
 st.markdown("<h1 class='fade-in'>🧠 NLP ContextBot Pro</h1>", unsafe_allow_html=True)
 st.markdown("""
 <div class='fade-in'>
-This <b>advanced</b> chatbot performs:
-- <b>Accurate spelling correction</b> 
+This chatbot performs:
+- <b>Basic spelling correction</b> 
 - <b>POS tagging</b>
 - <b>Context-aware word sense disambiguation</b>
-- <b>Sentiment analysis</b>
 </div>
 """, unsafe_allow_html=True)
 
@@ -197,8 +178,7 @@ with st.sidebar:
         "The bat flew out of the cave at dusk",
         "I deposited money at the bank",
         "She loves reading books about animals",
-        "They are playing with a bat and ball",
-        "I'm feeling really happy today!"
+        "They are playing with a bat and ball"
     ]
     for example in examples:
         if st.button(example, use_container_width=True):
@@ -228,48 +208,34 @@ if user_input:
             st.markdown("### 🔤 Corrected Input")
             st.markdown(f"<div class='result-card'>{corrected}</div>", unsafe_allow_html=True)
         
-        # Linguistic Analysis
-        with st.expander("🔍 Advanced Linguistic Analysis", expanded=True):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("#### 🏷️ Part-of-Speech Tags")
-                pos_html = "<div>"
-                for word, tag in pos_tags:
-                    pos_class = ""
-                    if tag.startswith('NN'): pos_class = "noun"
-                    elif tag.startswith('VB'): pos_class = "verb"
-                    elif tag.startswith('JJ'): pos_class = "adj"
-                    elif tag.startswith('RB'): pos_class = "adv"
-                    elif tag.startswith('PRP'): pos_class = "pron"
-                    elif tag.startswith('DT'): pos_class = "det"
-                    elif tag.startswith('CC'): pos_class = "conj"
-                    elif tag.startswith('IN'): pos_class = "prep"
-                    elif tag == 'RP': pos_class = "part"
-                    else: pos_class = "other"
-                    
-                    pos_html += f"""
-                    <span class="pos-tag {pos_class}">
-                        {word} <small>({tag})</small>
-                    </span>
-                    """
-                pos_html += "</div>"
-                st.markdown(pos_html, unsafe_allow_html=True)
+        # POS Tags
+        with st.container():
+            st.markdown("### 🔠 Part-of-Speech Tags")
+            pos_html = "<div>"
+            for word, tag in pos_tags:
+                pos_class = ""
+                if tag.startswith('NN'): pos_class = "noun"
+                elif tag.startswith('VB'): pos_class = "verb"
+                elif tag.startswith('JJ'): pos_class = "adj"
+                elif tag.startswith('RB'): pos_class = "adv"
+                elif tag.startswith('PRP'): pos_class = "pron"
+                elif tag.startswith('DT'): pos_class = "det"
+                elif tag.startswith('CC'): pos_class = "conj"
+                elif tag.startswith('IN'): pos_class = "prep"
+                elif tag == 'RP': pos_class = "part"
+                else: pos_class = "other"
                 
-            with col2:
-                # Sentiment Analysis
-                sentiment = TextBlob(user_input).sentiment
-                st.markdown(f"""
-                #### 😊 Sentiment Analysis
-                <div class='sense-card'>
-                    <b>Polarity:</b> {sentiment.polarity:.2f} ({"Positive" if sentiment.polarity > 0 else "Negative" if sentiment.polarity < 0 else "Neutral"})<br>
-                    <b>Subjectivity:</b> {sentiment.subjectivity:.2f}
-                </div>
-                """, unsafe_allow_html=True)
+                pos_html += f"""
+                <span class="pos-tag {pos_class}">
+                    {word} <small>({tag})</small>
+                </span>
+                """
+            pos_html += "</div>"
+            st.markdown(pos_html, unsafe_allow_html=True)
         
-        # Word Sense Disambiguation
+        # Word Senses
         if senses:
-            st.markdown("### 🧠 Contextual Understanding")
+            st.markdown("### 🧠 Word Sense Disambiguation")
             for word, sense in senses.items():
                 with st.container():
                     st.markdown(f"#### ✨ {word.capitalize()}")
@@ -282,7 +248,7 @@ if user_input:
                     st.progress(75)
         
         # Bot Response
-        st.markdown("### 🤖 Intelligent Response")
+        st.markdown("### 🤖 Bot Response")
         st.markdown(f"<div class='bot-response'>{response}</div>", unsafe_allow_html=True)
         
         # Processing time
