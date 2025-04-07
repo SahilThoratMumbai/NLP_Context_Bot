@@ -1,26 +1,25 @@
 import streamlit as st
 import nltk
-from nltk.tokenize import word_tokenize
 from nltk import pos_tag
+from nltk.tokenize import word_tokenize
 from nltk.corpus import wordnet as wn
 from spellchecker import SpellChecker
 
-# ========== Download required NLTK resources ==========
+# Download required resources if not already present
 nltk_packages = [
     "punkt",
     "averaged_perceptron_tagger",
     "wordnet",
-    "omw-1.4",
-    "stopwords"
+    "omw-1.4"
 ]
 
 for pkg in nltk_packages:
     try:
-        nltk.data.find(pkg)
+        nltk.data.find(f"corpora/{pkg}" if "corpora" in pkg else f"tokenizers/{pkg}")
     except LookupError:
         nltk.download(pkg)
 
-# ========== NLP Logic ==========
+# ========== NLP Helpers ==========
 spell = SpellChecker()
 
 def get_wordnet_pos(treebank_tag):
@@ -37,41 +36,33 @@ def get_wordnet_pos(treebank_tag):
 
 def correct_spelling(text):
     tokens = word_tokenize(text)
-    corrected = []
-    for word in tokens:
-        if word.lower() not in spell:
-            suggestion = spell.correction(word)
-            corrected.append(suggestion if suggestion else word)
-        else:
-            corrected.append(word)
-    return ' '.join(corrected)
+    return " ".join(
+        spell.correction(word) if word.lower() not in spell else word
+        for word in tokens
+    )
 
-def simple_lesk_definition(word, context_sentence, pos=None):
+def simple_lesk_definition(word, sentence, pos=None):
+    context = set(word_tokenize(sentence))
     max_overlap = 0
     best_sense = None
-    context = set(word_tokenize(context_sentence))
     for sense in wn.synsets(word, pos=pos):
         signature = set(word_tokenize(sense.definition()))
-        overlap = len(context.intersection(signature))
+        overlap = len(context & signature)
         if overlap > max_overlap:
             max_overlap = overlap
             best_sense = sense
     return best_sense.definition() if best_sense else None
 
-def process_input(user_input):
-    corrected = correct_spelling(user_input)
+def process_input(text):
+    corrected = correct_spelling(text)
     tokens = word_tokenize(corrected)
     tags = pos_tag(tokens)
     senses = {}
-
     for word, tag in tags:
         wn_pos = get_wordnet_pos(tag)
-        if word.lower() == "bank" and "river" in [t.lower() for t in tokens]:
-            senses[word] = "sloping land (especially the slope beside a body of water)"
-        else:
-            definition = simple_lesk_definition(word, corrected, pos=wn_pos)
-            if definition:
-                senses[word] = definition
+        definition = simple_lesk_definition(word, corrected, pos=wn_pos)
+        if definition:
+            senses[word] = definition
     return corrected, tags, senses
 
 def generate_response(corrected, pos_tags, senses):
@@ -92,23 +83,23 @@ def generate_response(corrected, pos_tags, senses):
         return "Thanks for sharing! What else would you like to talk about?"
 
 # ========== Streamlit UI ==========
+
 st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
 st.title("🧠 NLP ContextBot")
-st.markdown("This chatbot performs **spelling correction**, **POS tagging**, and **word sense disambiguation** using WordNet.")
+st.markdown("This bot performs **spelling correction**, **POS tagging**, and **word sense disambiguation** using WordNet.")
 
 user_input = st.text_input("You:", key="input")
 
 if user_input:
-    if user_input.lower() == 'exit':
+    if user_input.lower() == "exit":
         st.markdown("### 👋 Bot: Goodbye!")
     else:
         try:
             corrected, pos_tags, senses = process_input(user_input)
             response = generate_response(corrected, pos_tags, senses)
-
             st.markdown(f"**🔤 Corrected Input:** `{corrected}`")
             st.markdown(f"**🔠 POS Tags:** `{pos_tags}`")
             st.markdown(f"**🧠 Word Senses:** `{senses}`")
             st.markdown(f"### 🤖 Bot: {response}")
         except Exception as e:
-            st.error(f"⚠️ Something went wrong: {str(e)}")
+            st.error(f"⚠️ Error: {str(e)}")
