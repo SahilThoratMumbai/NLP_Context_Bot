@@ -41,7 +41,11 @@ st.markdown("""
     .verb { background-color: #f72585; }
     .adj { background-color: #7209b7; }
     .adv { background-color: #3a0ca3; }
-    .other { background-color: #4361ee; }
+    .pron { background-color: #4895ef; }
+    .det { background-color: #3f37c9; }
+    .conj { background-color: #560bad; }
+    .prep { background-color: #4361ee; }
+    .other { background-color: #b5179e; }
     .bot-response {
         background-color: #e9f7fe;
         border-left: 4px solid #4cc9f0;
@@ -52,9 +56,82 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 🧠 Self-contained NLP implementation
+# 🧠 Enhanced POS Tagger with more robust rules
+class EnhancedPOSTagger:
+    def __init__(self):
+        # Common word lists for more accurate tagging
+        self.verbs = {'is', 'am', 'are', 'was', 'were', 'be', 'have', 'has', 'had', 'do', 'does', 'did'}
+        self.prepositions = {'in', 'on', 'at', 'by', 'for', 'with', 'about', 'to', 'from'}
+        self.conjunctions = {'and', 'but', 'or', 'so', 'yet', 'for', 'nor'}
+        self.determiners = {'the', 'a', 'an', 'this', 'that', 'these', 'those', 'my', 'your', 'his', 'her'}
+        self.pronouns = {'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them'}
+        self.adverbs = {'very', 'really', 'quickly', 'slowly', 'well', 'badly', 'often', 'always', 'never'}
+        
+    def tag(self, tokens):
+        """More accurate POS tagging with enhanced rules"""
+        tags = []
+        for i, token in enumerate(tokens):
+            lower_token = token.lower()
+            
+            # Check for pronouns
+            if lower_token in self.pronouns:
+                tags.append((token, 'PRP'))
+            
+            # Check for determiners
+            elif lower_token in self.determiners:
+                tags.append((token, 'DT'))
+            
+            # Check for conjunctions
+            elif lower_token in self.conjunctions:
+                tags.append((token, 'CC'))
+            
+            # Check for prepositions
+            elif lower_token in self.prepositions:
+                tags.append((token, 'IN'))
+            
+            # Check for common verbs
+            elif lower_token in self.verbs:
+                tags.append((token, 'VB'))
+            
+            # Check for adverbs
+            elif lower_token in self.adverbs:
+                tags.append((token, 'RB'))
+            
+            # Check for verb endings
+            elif lower_token.endswith('ing'):
+                tags.append((token, 'VBG'))
+            elif lower_token.endswith('ed'):
+                tags.append((token, 'VBD'))
+            elif lower_token.endswith('es'):
+                tags.append((token, 'VBZ'))
+            elif lower_token.endswith('s'):
+                tags.append((token, 'VBZ' if i > 0 and tags[-1][1] in ('NN', 'PRP') else 'NNS'))
+            
+            # Check for adjective endings
+            elif lower_token.endswith('able') or lower_token.endswith('ible'):
+                tags.append((token, 'JJ'))
+            elif lower_token.endswith('ful') or lower_token.endswith('ous'):
+                tags.append((token, 'JJ'))
+            
+            # Check for adverb endings
+            elif lower_token.endswith('ly'):
+                tags.append((token, 'RB'))
+            
+            # Check for proper nouns (capitalized words)
+            elif token[0].isupper() and len(token) > 1 and (i == 0 or tags[-1][1] in ('.', '!', '?')):
+                tags.append((token, 'NNP'))
+            
+            # Default to noun for other cases
+            else:
+                tags.append((token, 'NN'))
+        
+        return tags
+
+# 🧠 Self-contained NLP implementation with enhanced POS tagging
 class NLPChatBot:
     def __init__(self):
+        self.tagger = EnhancedPOSTagger()
+        
         # Custom word senses database
         self.word_senses = {
             "bank": {
@@ -87,25 +164,8 @@ class NLPChatBot:
         return re.findall(r"\w+(?:'\w+)?|\S", text)
 
     def pos_tag(self, tokens):
-        """Simplified POS tagging using word endings and patterns"""
-        tags = []
-        for token in tokens:
-            lower_token = token.lower()
-            if lower_token.endswith('ing'):
-                tags.append((token, 'VBG'))
-            elif lower_token.endswith('ed'):
-                tags.append((token, 'VBD'))
-            elif lower_token.endswith('ly'):
-                tags.append((token, 'RB'))
-            elif lower_token.endswith('s'):
-                tags.append((token, 'NNS'))
-            elif lower_token[0].isupper() and len(token) > 1:
-                tags.append((token, 'NNP'))
-            elif lower_token in {'is', 'am', 'are', 'was', 'were'}:
-                tags.append((token, 'VB'))
-            else:
-                tags.append((token, 'NN'))
-        return tags
+        """Use our enhanced POS tagger"""
+        return self.tagger.tag(tokens)
 
     def correct_spelling(self, text):
         """Basic spelling correction using dictionary lookup"""
@@ -178,8 +238,8 @@ bot = NLPChatBot()
 st.markdown("<h1 class='fade-in'>🧠 NLP ContextBot Pro</h1>", unsafe_allow_html=True)
 st.markdown("""
 <div class='fade-in'>
-This self-contained chatbot performs <b>spelling correction</b>, <b>POS tagging</b>, 
-and <b>word sense disambiguation</b> without external dependencies.
+This enhanced chatbot performs <b>accurate spelling correction</b>, <b>robust POS tagging</b>, 
+and <b>context-aware word sense disambiguation</b> with beautiful visualization.
 </div>
 """, unsafe_allow_html=True)
 
@@ -188,9 +248,9 @@ with st.sidebar:
     st.markdown("### 💡 Try these examples:")
     examples = [
         "I deposited money at the bank",
-        "The bat flew out of the cave",
-        "I need to book a hotel room",
-        "Children love to play outside"
+        "The bat flew out of the cave at dusk",
+        "She loves reading books about animals",
+        "They are playing with a bat and ball"
     ]
     for example in examples:
         if st.button(example, use_container_width=True):
@@ -232,6 +292,10 @@ if user_input:
                 elif tag.startswith('VB'): pos_class = "verb"
                 elif tag.startswith('JJ'): pos_class = "adj"
                 elif tag.startswith('RB'): pos_class = "adv"
+                elif tag.startswith('PRP'): pos_class = "pron"
+                elif tag.startswith('DT'): pos_class = "det"
+                elif tag.startswith('CC'): pos_class = "conj"
+                elif tag.startswith('IN'): pos_class = "prep"
                 else: pos_class = "other"
                 
                 pos_html += f"""
