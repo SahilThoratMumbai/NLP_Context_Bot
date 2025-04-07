@@ -1,167 +1,135 @@
 import streamlit as st
-import nltk
-from nltk.tokenize import word_tokenize
-from nltk import pos_tag
-from nltk.corpus import wordnet as wn
-from spellchecker import SpellChecker
-import os
-from pywsd.lesk import cosine_lesk
-from pywsd.utils import lemmatize_sentence
+import re
+from collections import defaultdict
 
-# ========== Setup with Robust Error Handling ==========
+# ========== Self-Contained NLP Implementation ==========
 class NLPChatBot:
     def __init__(self):
-        self.setup_nltk()
-        self.spell = SpellChecker()
-        self.use_advanced_lesk = True  # Flag for cosine_lesk availability
-
-    def setup_nltk(self):
-        """Configure NLTK with multiple fallback options"""
-        try:
-            # Try multiple possible NLTK data paths
-            nltk_data_paths = [
-                os.path.join(os.getcwd(), "nltk_data"),
-                os.path.join(os.path.expanduser("~"), "nltk_data"),
-                "/tmp/nltk_data"
-            ]
-            
-            for path in nltk_data_paths:
-                try:
-                    os.makedirs(path, exist_ok=True)
-                    nltk.data.path.append(path)
-                except:
-                    continue
-
-            # Download required resources
-            required_packages = [
-                'punkt', 'averaged_perceptron_tagger',
-                'wordnet', 'omw-1.4', 'stopwords'
-            ]
-            
-            for package in required_packages:
-                try:
-                    nltk.data.find(package)
-                except LookupError:
-                    nltk.download(package)
-
-        except Exception as e:
-            st.warning(f"Limited functionality: {str(e)}")
-
-    def get_wordnet_pos(self, treebank_tag):
-        """Convert treebank POS tags to WordNet POS tags"""
-        tag_map = {
-            'J': wn.ADJ,
-            'V': wn.VERB,
-            'N': wn.NOUN,
-            'R': wn.ADV
+        # Custom word senses database
+        self.word_senses = {
+            "bank": {
+                "financial": "a financial institution that accepts deposits",
+                "river": "sloping land beside a body of water"
+            },
+            "book": {
+                "reading": "a written or printed work",
+                "reserve": "to arrange for something in advance"
+            },
+            "love": {
+                "emotion": "a strong feeling of affection",
+                "score": "zero in tennis"
+            }
         }
-        return tag_map.get(treebank_tag[0], wn.NOUN)
+        
+        # POS tag mapping
+        self.pos_tags = {
+            'NN': 'NOUN', 'VB': 'VERB', 'JJ': 'ADJ', 'RB': 'ADV',
+            'NNS': 'NOUN', 'VBD': 'VERB', 'VBG': 'VERB', 'VBN': 'VERB',
+            'VBP': 'VERB', 'VBZ': 'VERB', 'JJR': 'ADJ', 'JJS': 'ADJ',
+            'RBR': 'ADV', 'RBS': 'ADV'
+        }
+        
+        # Common words dictionary for basic spell checking
+        self.dictionary = {
+            'hello', 'hi', 'bank', 'book', 'love', 'river',
+            'money', 'financial', 'water', 'read', 'knowledge',
+            'emotion', 'tell', 'more', 'share', 'thanks'
+        }
+
+    def tokenize(self, text):
+        """Simple whitespace tokenizer with punctuation handling"""
+        return re.findall(r"\w+(?:'\w+)?|\S", text)
+
+    def pos_tag(self, tokens):
+        """Simplified POS tagging using word endings and common patterns"""
+        tags = []
+        for token in tokens:
+            lower_token = token.lower()
+            if lower_token.endswith('ing'):
+                tags.append((token, 'VBG'))
+            elif lower_token.endswith('ed'):
+                tags.append((token, 'VBD'))
+            elif lower_token.endswith('ly'):
+                tags.append((token, 'RB'))
+            elif lower_token.endswith('s'):
+                tags.append((token, 'NNS'))
+            elif lower_token[0].isupper() and len(token) > 1:
+                tags.append((token, 'NNP'))
+            elif lower_token in {'is', 'am', 'are', 'was', 'were'}:
+                tags.append((token, 'VB'))
+            else:
+                tags.append((token, 'NN'))
+        return tags
 
     def correct_spelling(self, text):
-        """Enhanced spelling correction with error handling"""
-        try:
-            tokens = word_tokenize(text)
-            corrected = []
-            for word in tokens:
-                if word.lower() not in self.spell:
-                    suggestion = self.spell.correction(word)
-                    corrected.append(suggestion if suggestion else word)
-                else:
-                    corrected.append(word)
-            return ' '.join(corrected)
-        except:
-            return text  # Return original if correction fails
+        """Basic spelling correction using dictionary lookup"""
+        tokens = self.tokenize(text)
+        corrected = []
+        for word in tokens:
+            if word.lower() not in self.dictionary:
+                # Very simple correction - just lowercase if not in dictionary
+                corrected.append(word.lower())
+            else:
+                corrected.append(word)
+        return ' '.join(corrected)
 
-    def disambiguate_word(self, word, context, pos=None):
-        """Hybrid word sense disambiguation"""
-        try:
-            if self.use_advanced_lesk:
-                try:
-                    # Try cosine_lesk first
-                    sense = cosine_lesk(context, word, pos=pos)
-                    if sense:
-                        return sense.definition()
-                except:
-                    self.use_advanced_lesk = False
-                    return self.simple_lesk(word, context, pos)
-            
-            # Fallback to simple Lesk
-            return self.simple_lesk(word, context, pos)
-            
-        except:
-            return None
-
-    def simple_lesk(self, word, context, pos=None):
-        """Simplified Lesk algorithm fallback"""
-        context_words = set(word_tokenize(context.lower()))
-        best_sense = None
-        max_overlap = 0
+    def disambiguate_word(self, word, context):
+        """Custom word sense disambiguation"""
+        word = word.lower()
+        context_words = set(w.lower() for w in self.tokenize(context))
         
-        for sense in wn.synsets(word, pos=pos):
-            signature = set(word_tokenize(sense.definition().lower()))
-            for example in sense.examples():
-                signature.update(word_tokenize(example.lower()))
+        if word in self.word_senses:
+            senses = self.word_senses[word]
+            for sense, definition in senses.items():
+                if sense in context_words:
+                    return definition
             
-            overlap = len(context_words.intersection(signature))
-            if overlap > max_overlap:
-                max_overlap = overlap
-                best_sense = sense
+            # Default to first sense if no context match
+            return next(iter(senses.values()))
         
-        return best_sense.definition() if best_sense else None
+        return None
 
     def process_input(self, text):
         """Complete NLP processing pipeline"""
         corrected = self.correct_spelling(text)
-        tokens = word_tokenize(corrected)
-        pos_tags = pos_tag(tokens)
+        tokens = self.tokenize(corrected)
+        tags = self.pos_tag(tokens)
         senses = {}
-
-        for word, tag in pos_tags:
-            wn_pos = self.get_wordnet_pos(tag)
-            
-            # Special case for "bank"
-            if word.lower() == "bank":
-                if "river" in [t.lower() for t in tokens]:
-                    senses[word] = "sloping land beside a body of water"
-                else:
-                    senses[word] = "financial institution"
-                continue
-                
-            # General case for other words
-            definition = self.disambiguate_word(word, corrected, wn_pos)
-            if definition:
-                senses[word] = definition
         
-        return corrected, pos_tags, senses
+        for token, tag in tags:
+            meaning = self.disambiguate_word(token, corrected)
+            if meaning:
+                senses[token] = meaning
+        
+        return corrected, tags, senses
 
     def generate_response(self, corrected, pos_tags, senses):
         """Context-aware response generation"""
         lowered = corrected.lower()
         
         if "bank" in senses:
-            meaning = senses["bank"]
-            if "financial" in meaning:
-                return "Are you talking about banking services?"
+            if "financial" in senses["bank"]:
+                return "Are you talking about a financial institution?"
             else:
-                return "Ah, the riverbank - nature is beautiful!"
+                return "Oh! You mean a river bank. Sounds peaceful."
         
         if "book" in lowered:
-            return "Books are wonderful sources of knowledge!"
+            return "Books are a great source of knowledge!"
         
         if "love" in lowered:
-            return "Love is a powerful emotion. Tell me more!"
+            return "Love is a beautiful emotion. Tell me more!"
         
-        return "Interesting! What else would you like to discuss?"
+        return "Thanks for sharing! What else would you like to talk about?"
 
 # ========== Streamlit UI ==========
 def main():
-    st.set_page_config(page_title="Enhanced NLP Bot", page_icon="🤖")
-    st.title("🤖 Enhanced NLP ContextBot")
+    st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
+    st.title("🧠 NLP ContextBot")
     st.markdown("""
-    This enhanced version uses:
-    - **cosine_lesk** for better word sense disambiguation
-    - Robust fallback mechanisms
-    - Improved error handling
+    This self-contained version performs:
+    - **Spelling correction** (basic)
+    - **POS tagging** (rule-based)
+    - **Word sense disambiguation** (custom)
     """)
     
     bot = NLPChatBot()
@@ -196,8 +164,8 @@ def main():
                     st.markdown(f"### 🤖 Bot: {response}")
                 
                 except Exception as e:
-                    st.error(f"Error in processing: {str(e)}")
-                    st.info("The bot is using simplified processing for this input.")
+                    st.error(f"Error: {str(e)}")
+                    st.info("Please try a different input")
 
 if __name__ == "__main__":
     main()
