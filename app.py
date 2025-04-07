@@ -1,25 +1,26 @@
 import streamlit as st
-import spacy
 from textblob import TextBlob
+import nltk
 from nltk.wsd import lesk
 from nltk.corpus import wordnet as wn
 import time
 from collections import defaultdict
-from spacy import displacy
-import en_core_web_sm
+import re
 
-# Load Spacy model
-nlp = en_core_web_sm.load()
+# Download required NLTK data
+nltk.download('wordnet')
+nltk.download('punkt')
+nltk.download('averaged_perceptron_tagger')
 
 # ✅ Must be the first Streamlit command
 st.set_page_config(
-    page_title="🧠 NLP ContextBot Pro+", 
+    page_title="🧠 NLP ContextBot Pro", 
     page_icon="🤖", 
     layout="centered",
     initial_sidebar_state="expanded"
 )
 
-# ✨ Enhanced Custom CSS
+# ✨ Custom CSS for beautiful UI
 st.markdown("""
 <style>
     @keyframes fadeIn {
@@ -68,11 +69,6 @@ st.markdown("""
         margin: 0.5rem 0;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
-    .dep-tree {
-        background-color: white;
-        padding: 1rem;
-        border-radius: 8px;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -90,21 +86,20 @@ class EnhancedNLPChatBot:
         return str(blob.correct())
     
     def pos_tag(self, text):
-        """Advanced POS tagging using Spacy"""
-        doc = nlp(text)
-        return [(token.text, token.tag_) for token in doc]
+        """POS tagging using NLTK"""
+        tokens = nltk.word_tokenize(text)
+        return nltk.pos_tag(tokens)
     
     def tokenize(self, text):
-        """Tokenization using Spacy"""
-        doc = nlp(text)
-        return [token.text for token in doc]
+        """Tokenization using NLTK"""
+        return nltk.word_tokenize(text)
     
     def disambiguate_word(self, word, sentence):
-        """Enhanced WSD using NLTK's Lesk algorithm"""
+        """Word sense disambiguation using NLTK's Lesk algorithm"""
         if word.lower() not in self.target_words:
             return None
             
-        synset = lesk(sentence.split(), word.lower())
+        synset = lesk(nltk.word_tokenize(sentence), word.lower())
         if synset:
             return {
                 'definition': synset.definition(),
@@ -121,22 +116,9 @@ class EnhancedNLPChatBot:
             'subjectivity': blob.sentiment.subjectivity
         }
     
-    def extract_entities(self, text):
-        """Named Entity Recognition using Spacy"""
-        doc = nlp(text)
-        return [(ent.text, ent.label_) for ent in doc.ents]
-    
-    def generate_response(self, text, senses, entities):
+    def generate_response(self, text, senses):
         """Context-aware response generation"""
         response = ""
-        
-        # Check for specific entities first
-        if entities:
-            for entity, label in entities:
-                if label == 'ORG' and any(w in text.lower() for w in ['bank', 'financial']):
-                    return "🏦 I see you mentioned a financial organization. Are you asking about banking services?"
-                elif label == 'GPE':
-                    return f"🌍 You mentioned {entity}. Are you asking about something location-specific?"
         
         # Check word senses
         if senses:
@@ -179,11 +161,8 @@ class EnhancedNLPChatBot:
                 if sense:
                     senses[token] = sense
         
-        # Entity recognition
-        entities = self.extract_entities(corrected)
-        
         # Generate response
-        response = self.generate_response(corrected, senses, entities)
+        response = self.generate_response(corrected, senses)
         
         # Update conversation history
         self.conversation_history.append({
@@ -191,24 +170,22 @@ class EnhancedNLPChatBot:
             'corrected': corrected,
             'pos_tags': pos_tags,
             'senses': senses,
-            'entities': entities,
             'response': response
         })
         
-        return corrected, pos_tags, senses, entities, response
+        return corrected, pos_tags, senses, response
 
 # ✨ Initialize the bot
 bot = EnhancedNLPChatBot()
 
 # ✨ Main App UI
-st.markdown("<h1 class='fade-in'>🧠 NLP ContextBot Pro+</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='fade-in'>🧠 NLP ContextBot Pro</h1>", unsafe_allow_html=True)
 st.markdown("""
 <div class='fade-in'>
 This <b>advanced</b> chatbot performs:
 - <b>Accurate spelling correction</b> 
-- <b>State-of-the-art POS tagging</b>
+- <b>POS tagging</b>
 - <b>Context-aware word sense disambiguation</b>
-- <b>Named entity recognition</b>
 - <b>Sentiment analysis</b>
 </div>
 """, unsafe_allow_html=True)
@@ -218,9 +195,9 @@ with st.sidebar:
     st.markdown("### 💡 Try these examples:")
     examples = [
         "The bat flew out of the cave at dusk",
-        "I deposited money at Bank of America",
-        "She loves reading books about Paris",
-        "They are playing with a bat and ball in London",
+        "I deposited money at the bank",
+        "She loves reading books about animals",
+        "They are playing with a bat and ball",
         "I'm feeling really happy today!"
     ]
     for example in examples:
@@ -238,9 +215,9 @@ if user_input:
     if user_input.lower() == 'exit':
         st.success("👋 Goodbye! Refresh the page to start over.")
     else:
-        with st.spinner("🔍 Analyzing your input with advanced NLP..."):
+        with st.spinner("🔍 Analyzing your input..."):
             start_time = time.time()
-            corrected, pos_tags, senses, entities, response = bot.process_input(user_input)
+            corrected, pos_tags, senses, response = bot.process_input(user_input)
             processing_time = time.time() - start_time
         
         # Display results in a beautiful layout
@@ -279,6 +256,7 @@ if user_input:
                 pos_html += "</div>"
                 st.markdown(pos_html, unsafe_allow_html=True)
                 
+            with col2:
                 # Sentiment Analysis
                 sentiment = TextBlob(user_input).sentiment
                 st.markdown(f"""
@@ -288,28 +266,6 @@ if user_input:
                     <b>Subjectivity:</b> {sentiment.subjectivity:.2f}
                 </div>
                 """, unsafe_allow_html=True)
-            
-            with col2:
-                st.markdown("#### 🏛️ Named Entities")
-                if entities:
-                    entity_html = "<div style='display: flex; flex-wrap: wrap; gap: 0.5rem;'>"
-                    for entity, label in entities:
-                        entity_html += f"""
-                        <span style='background-color: #f0f0f0; padding: 0.25rem 0.5rem; 
-                            border-radius: 4px; font-size: 0.85rem;'>
-                            {entity} <small>({label})</small>
-                        </span>
-                        """
-                    entity_html += "</div>"
-                    st.markdown(entity_html, unsafe_allow_html=True)
-                else:
-                    st.info("No named entities detected")
-                
-                # Dependency Parse Visualization
-                doc = nlp(corrected)
-                html = displacy.render(doc, style="dep", options={'compact': True, 'distance': 100})
-                st.markdown("#### 🎋 Dependency Parse")
-                st.markdown(f"<div class='dep-tree'>{html}</div>", unsafe_allow_html=True)
         
         # Word Sense Disambiguation
         if senses:
@@ -330,7 +286,7 @@ if user_input:
         st.markdown(f"<div class='bot-response'>{response}</div>", unsafe_allow_html=True)
         
         # Processing time
-        st.caption(f"Processed in {processing_time:.2f} seconds with advanced NLP models")
+        st.caption(f"Processed in {processing_time:.2f} seconds")
         
         # Success effect
         st.balloons()
