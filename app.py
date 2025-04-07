@@ -8,7 +8,7 @@ from spellchecker import SpellChecker
 
 # ========== Setup ==========
 
-NLTK_DATA_PATH = "./nltk_data"
+NLTK_DATA_PATH = "/workspaces/NLP_Context_Bot/nltk_data"
 os.makedirs(NLTK_DATA_PATH, exist_ok=True)
 nltk.data.path.append(NLTK_DATA_PATH)
 
