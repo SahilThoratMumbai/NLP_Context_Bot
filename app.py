@@ -2,7 +2,6 @@ import streamlit as st
 import re
 import time
 from collections import defaultdict
-import pandas as pd
 
 # ✅ Must be the first Streamlit command
 st.set_page_config(
@@ -45,7 +44,8 @@ st.markdown("""
     .det { background-color: #3f37c9; }
     .conj { background-color: #560bad; }
     .prep { background-color: #4361ee; }
-    .other { background-color: #b5179e; }
+    .part { background-color: #b5179e; }
+    .other { background-color: #f15bb5; }
     .bot-response {
         background-color: #e9f7fe;
         border-left: 4px solid #4cc9f0;
@@ -56,81 +56,104 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 🧠 Enhanced POS Tagger with more robust rules
-class EnhancedPOSTagger:
+# 🧠 Enhanced POS Tagger with robust rules
+class RobustPOSTagger:
     def __init__(self):
-        # Common word lists for more accurate tagging
-        self.verbs = {'is', 'am', 'are', 'was', 'were', 'be', 'have', 'has', 'had', 'do', 'does', 'did'}
-        self.prepositions = {'in', 'on', 'at', 'by', 'for', 'with', 'about', 'to', 'from'}
+        # Word lists for accurate tagging
+        self.verbs_base = {'be', 'have', 'do', 'go', 'make', 'take', 'see', 'get'}
+        self.irregular_verbs = {'went': 'go', 'ate': 'eat', 'saw': 'see', 'ran': 'run'}
+        self.modals = {'can', 'could', 'may', 'might', 'shall', 'should', 'will', 'would', 'must'}
+        self.prepositions = {'in', 'on', 'at', 'by', 'for', 'with', 'about', 'to', 'from', 'of', 'out'}
         self.conjunctions = {'and', 'but', 'or', 'so', 'yet', 'for', 'nor'}
         self.determiners = {'the', 'a', 'an', 'this', 'that', 'these', 'those', 'my', 'your', 'his', 'her'}
         self.pronouns = {'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them'}
         self.adverbs = {'very', 'really', 'quickly', 'slowly', 'well', 'badly', 'often', 'always', 'never'}
+        self.adjectives = {'good', 'bad', 'big', 'small', 'happy', 'sad', 'beautiful', 'ugly'}
         
     def tag(self, tokens):
         """More accurate POS tagging with enhanced rules"""
         tags = []
+        prev_tag = None
+        
         for i, token in enumerate(tokens):
             lower_token = token.lower()
+            tag = 'NN'  # Default to noun
             
             # Check for pronouns
             if lower_token in self.pronouns:
-                tags.append((token, 'PRP'))
+                tag = 'PRP'
             
             # Check for determiners
             elif lower_token in self.determiners:
-                tags.append((token, 'DT'))
+                tag = 'DT'
             
             # Check for conjunctions
             elif lower_token in self.conjunctions:
-                tags.append((token, 'CC'))
+                tag = 'CC'
             
             # Check for prepositions
             elif lower_token in self.prepositions:
-                tags.append((token, 'IN'))
+                tag = 'IN'
             
-            # Check for common verbs
-            elif lower_token in self.verbs:
-                tags.append((token, 'VB'))
+            # Check for modal verbs
+            elif lower_token in self.modals:
+                tag = 'MD'
             
-            # Check for adverbs
-            elif lower_token in self.adverbs:
-                tags.append((token, 'RB'))
+            # Check for base verbs
+            elif lower_token in self.verbs_base:
+                tag = 'VB'
+            
+            # Check for irregular verbs
+            elif lower_token in self.irregular_verbs:
+                tag = 'VBD'
             
             # Check for verb endings
             elif lower_token.endswith('ing'):
-                tags.append((token, 'VBG'))
+                tag = 'VBG'
             elif lower_token.endswith('ed'):
-                tags.append((token, 'VBD'))
+                tag = 'VBD'
             elif lower_token.endswith('es'):
-                tags.append((token, 'VBZ'))
+                tag = 'VBZ'
             elif lower_token.endswith('s'):
-                tags.append((token, 'VBZ' if i > 0 and tags[-1][1] in ('NN', 'PRP') else 'NNS'))
+                # Check if previous word is a noun/pronoun (for 3rd person singular)
+                if i > 0 and prev_tag in ('NN', 'PRP'):
+                    tag = 'VBZ'
+                else:
+                    tag = 'NNS'
             
-            # Check for adjective endings
-            elif lower_token.endswith('able') or lower_token.endswith('ible'):
-                tags.append((token, 'JJ'))
-            elif lower_token.endswith('ful') or lower_token.endswith('ous'):
-                tags.append((token, 'JJ'))
+            # Check for adjectives
+            elif lower_token in self.adjectives:
+                tag = 'JJ'
+            elif lower_token.endswith(('able', 'ible', 'ful', 'ous', 'ish')):
+                tag = 'JJ'
             
-            # Check for adverb endings
+            # Check for adverbs
+            elif lower_token in self.adverbs:
+                tag = 'RB'
             elif lower_token.endswith('ly'):
-                tags.append((token, 'RB'))
+                tag = 'RB'
             
-            # Check for proper nouns (capitalized words)
-            elif token[0].isupper() and len(token) > 1 and (i == 0 or tags[-1][1] in ('.', '!', '?')):
-                tags.append((token, 'NNP'))
+            # Check for particles (phrasal verbs)
+            elif lower_token in {'up', 'down', 'off', 'on', 'in', 'out'} and prev_tag == 'VB':
+                tag = 'RP'
             
-            # Default to noun for other cases
-            else:
-                tags.append((token, 'NN'))
+            # Check for proper nouns (capitalized words not at start of sentence)
+            elif token[0].isupper() and len(token) > 1 and (i > 0 and tokens[i-1] not in {'.', '!', '?'}):
+                tag = 'NNP'
+            
+            # Check for numbers
+            elif re.match(r'^\d+$', token):
+                tag = 'CD'
+            
+            prev_tag = tag
+            tags.append((token, tag))
         
         return tags
 
-# 🧠 Self-contained NLP implementation with enhanced POS tagging
+# 🧠 Self-contained NLP implementation
 class NLPChatBot:
     def __init__(self):
-        self.tagger = EnhancedPOSTagger()
+        self.tagger = RobustPOSTagger()
         
         # Custom word senses database
         self.word_senses = {
@@ -247,8 +270,8 @@ and <b>context-aware word sense disambiguation</b> with beautiful visualization.
 with st.sidebar:
     st.markdown("### 💡 Try these examples:")
     examples = [
-        "I deposited money at the bank",
         "The bat flew out of the cave at dusk",
+        "I deposited money at the bank",
         "She loves reading books about animals",
         "They are playing with a bat and ball"
     ]
@@ -296,6 +319,7 @@ if user_input:
                 elif tag.startswith('DT'): pos_class = "det"
                 elif tag.startswith('CC'): pos_class = "conj"
                 elif tag.startswith('IN'): pos_class = "prep"
+                elif tag == 'RP': pos_class = "part"
                 else: pos_class = "other"
                 
                 pos_html += f"""
