@@ -7,35 +7,31 @@ from spellchecker import SpellChecker
 import os
 
 # ========== Setup ==========
-
-# Local nltk_data path for Streamlit deployments
+# Local nltk_data path for deployment
 NLTK_DATA_PATH = "./nltk_data"
 os.makedirs(NLTK_DATA_PATH, exist_ok=True)
-
-# Force only the local nltk_data path
-nltk.data.path.clear()
 nltk.data.path.append(NLTK_DATA_PATH)
 
-# Download essential resources safely
-resources = [
+# Force download essential resources if missing
+required_resources = [
     ("tokenizers/punkt", "punkt"),
     ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
     ("corpora/wordnet", "wordnet"),
     ("corpora/omw-1.4", "omw-1.4"),
     ("corpora/stopwords", "stopwords"),
 ]
-for path, name in resources:
+
+for path, resource in required_resources:
     try:
         nltk.data.find(path)
     except LookupError:
-        nltk.download(name, download_dir=NLTK_DATA_PATH)
+        nltk.download(resource, download_dir=NLTK_DATA_PATH, force=True)
 
 # ========== Helper Functions ==========
 
 spell = SpellChecker()
 
 def get_wordnet_pos(treebank_tag):
-    """Map POS tag to WordNet format"""
     if treebank_tag.startswith('J'):
         return wn.ADJ
     elif treebank_tag.startswith('V'):
@@ -45,7 +41,7 @@ def get_wordnet_pos(treebank_tag):
     elif treebank_tag.startswith('R'):
         return wn.ADV
     else:
-        return wn.NOUN  # Default
+        return wn.NOUN
 
 def correct_spelling(text):
     tokens = word_tokenize(text)
@@ -59,7 +55,6 @@ def correct_spelling(text):
     return ' '.join(corrected)
 
 def simple_lesk_definition(word, context_sentence, pos=None):
-    """Simplified Lesk algorithm using overlaps with WordNet glosses"""
     max_overlap = 0
     best_sense = None
     context = set(word_tokenize(context_sentence))
