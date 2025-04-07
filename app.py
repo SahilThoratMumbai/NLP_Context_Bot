@@ -5,7 +5,7 @@ from nltk import pos_tag
 from nltk.corpus import wordnet as wn
 from spellchecker import SpellChecker
 
-# ========== Download NLTK Resources ==========
+# ========== Download required NLTK resources ==========
 nltk_packages = [
     "punkt",
     "averaged_perceptron_tagger",
@@ -20,7 +20,7 @@ for pkg in nltk_packages:
     except LookupError:
         nltk.download(pkg)
 
-# ========== NLP Helper Functions ==========
+# ========== NLP Logic ==========
 spell = SpellChecker()
 
 def get_wordnet_pos(treebank_tag):
