@@ -1,18 +1,33 @@
 import streamlit as st
 import nltk
+import os
 from nltk import pos_tag
 from nltk.corpus import wordnet as wn
 from spellchecker import SpellChecker
 from nltk.tokenize import word_tokenize
 
-# ========== Download NLTK Resources ==========
-# Dynamically downloads into /home/appuser/nltk_data (Streamlit's default writable path)
-nltk.download("punkt")
-nltk.download("averaged_perceptron_tagger")
-nltk.download("wordnet")
-nltk.download("omw-1.4")
+# ========== Setup ==========
 
-# ========== Spell Checker ==========
+# Set NLTK data path to user home directory (safe for Streamlit Cloud)
+nltk_data_path = os.path.join(os.path.expanduser("~"), "nltk_data")
+nltk.data.path.append(nltk_data_path)
+
+# Download required resources (only if not present)
+resources = [
+    ("tokenizers/punkt", "punkt"),
+    ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
+    ("corpora/wordnet", "wordnet"),
+    ("corpora/omw-1.4", "omw-1.4")
+]
+
+for resource_path, resource_name in resources:
+    try:
+        nltk.data.find(resource_path)
+    except LookupError:
+        nltk.download(resource_name, download_dir=nltk_data_path)
+
+# ========== NLP Helpers ==========
+
 spell = SpellChecker()
 
 def get_wordnet_pos(treebank_tag):
@@ -84,6 +99,7 @@ def generate_response(corrected, pos_tags, senses):
         return "Thanks for sharing! What else would you like to talk about?"
 
 # ========== Streamlit UI ==========
+
 st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
 st.title("🧠 NLP ContextBot")
 st.markdown("This bot performs **spelling correction**, **POS tagging**, and **word sense disambiguation** using WordNet.")
@@ -91,7 +107,7 @@ st.markdown("This bot performs **spelling correction**, **POS tagging**, and **w
 user_input = st.text_input("You:", key="input")
 
 if user_input:
-    if user_input.lower() == "exit":
+    if user_input.lower() == 'exit':
         st.markdown("### 👋 Bot: Goodbye!")
     else:
         try:
@@ -103,4 +119,4 @@ if user_input:
             st.markdown(f"**🧠 Word Senses:** `{senses}`")
             st.markdown(f"### 🤖 Bot: {response}")
         except Exception as e:
-            st.error(f"⚠️ Error: {str(e)}")
+            st.error(f"⚠️ Something went wrong: {str(e)}")
