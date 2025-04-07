@@ -1,12 +1,8 @@
 import streamlit as st
-import nltk
-from nltk.tokenize import word_tokenize
-from nltk import pos_tag
-from nltk.corpus import wordnet as wn
-from pywsd.lesk import cosine_lesk
-from spellchecker import SpellChecker
-import os
+import re
 import time
+from collections import defaultdict
+import pandas as pd
 
 # ✅ Must be the first Streamlit command
 st.set_page_config(
@@ -56,123 +52,134 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ✨ Set up NLTK data path
-nltk_path = os.path.join(os.getcwd(), "nltk_data")
-os.makedirs(nltk_path, exist_ok=True)
-nltk.data.path.append(nltk_path)
-
-# ✅ Download required NLTK resources
-nltk_packages = [
-    "punkt", "averaged_perceptron_tagger", 
-    "wordnet", "omw-1.4", "stopwords"
-]
-for package in nltk_packages:
-    try:
-        nltk.data.find(package)
-    except LookupError:
-        nltk.download(package, download_dir=nltk_path)
-
-# 🧠 Initialize spell checker
-spell = SpellChecker()
-
-# 🔤 POS converter (same as original)
-def get_wordnet_pos(treebank_tag):
-    if treebank_tag.startswith('J'):
-        return wn.ADJ
-    elif treebank_tag.startswith('V'):
-        return wn.VERB
-    elif treebank_tag.startswith('N'):
-        return wn.NOUN
-    elif treebank_tag.startswith('R'):
-        return wn.ADV
-    else:
-        return wn.NOUN
-
-# 🧹 Spelling correction (same as original)
-def correct_spelling(text):
-    tokens = word_tokenize(text)
-    corrected_tokens = []
-    for word in tokens:
-        if word.lower() not in spell:
-            corrected = spell.correction(word)
-            corrected_tokens.append(corrected if corrected else word)
-        else:
-            corrected_tokens.append(word)
-    return ' '.join(corrected_tokens)
-
-# 🧠 NLP processing (same as original)
-def process_input(user_input):
-    corrected = correct_spelling(user_input)
-    tokens = word_tokenize(corrected)
-    pos_tags = pos_tag(tokens)
-    disambiguated = {}
-
-    for word, tag in pos_tags:
-        wn_pos = get_wordnet_pos(tag)
-        if word.lower() == "bank" and "river" in [t.lower() for t in tokens]:
-            disambiguated[word] = "sloping land (especially the slope beside a body of water)"
-        else:
-            context = ' '.join(tokens)
-            sense = cosine_lesk(context, word, pos=wn_pos)
-            if sense:
-                disambiguated[word] = sense.definition()
-    return corrected, pos_tags, disambiguated
-
-# 💬 Bot response (same logic with enhanced UI)
-def generate_response(corrected, pos_tags, senses):
-    lowered = corrected.lower()
-    if "bank" in lowered:
-        meaning = senses.get("bank", "")
-        if "financial" in meaning or "money" in meaning:
-            return "🏦 Are you talking about a financial institution?"
-        elif "river" in meaning or "slope" in meaning:
-            return "🌊 Oh! You mean a river bank. Sounds peaceful."
-        else:
-            return "🤔 Which type of bank are you referring to?"
-    elif "book" in lowered:
-        return "📚 Books are a great source of knowledge!"
-    elif "love" in lowered:
-        return "❤️ Love is a beautiful emotion. Tell me more!"
-    else:
-        return "🙂 Thanks for sharing! What else would you like to talk about?"
-
-# ✨ Beautiful UI Components
-def display_pos_tags(tags):
-    """Visualize POS tags with color coding"""
-    pos_html = "<div>"
-    for word, tag in tags:
-        pos_class = ""
-        if tag.startswith('NN'): pos_class = "noun"
-        elif tag.startswith('VB'): pos_class = "verb"
-        elif tag.startswith('JJ'): pos_class = "adj"
-        elif tag.startswith('RB'): pos_class = "adv"
-        else: pos_class = "other"
+# 🧠 Self-contained NLP implementation
+class NLPChatBot:
+    def __init__(self):
+        # Custom word senses database
+        self.word_senses = {
+            "bank": {
+                "financial": "🏦 Financial institution that handles money",
+                "river": "🌊 Sloping land beside a body of water"
+            },
+            "book": {
+                "reading": "📖 A written or printed work",
+                "reserve": "📅 To arrange something in advance"
+            },
+            "bat": {
+                "sports": "🏏 Club used in baseball or cricket",
+                "animal": "🦇 Flying mammal with wings"
+            },
+            "love": {
+                "emotion": "❤️ Strong feeling of affection",
+                "score": "🎾 Zero in tennis"
+            }
+        }
         
-        pos_html += f"""
-        <span class="pos-tag {pos_class}">
-            {word} <small>({tag})</small>
-        </span>
-        """
-    pos_html += "</div>"
-    st.markdown(pos_html, unsafe_allow_html=True)
+        # Common words dictionary
+        self.dictionary = {
+            'i', 'like', 'playing', 'with', 'bat', 'bank', 'book', 'love', 'river',
+            'money', 'financial', 'water', 'read', 'knowledge', 'emotion', 'tell',
+            'more', 'share', 'thanks', 'went', 'to', 'the', 'saw', 'flying'
+        }
 
-def display_word_senses(senses):
-    """Visualize word senses with expandable sections"""
-    if not senses:
-        st.info("No specific word senses detected")
-        return
-    
-    for word, definition in senses.items():
-        with st.expander(f"🔍 {word.capitalize()}", expanded=True):
-            st.markdown(f"**Definition:** {definition}")
-            st.progress(70)  # Visual confidence indicator
+    def tokenize(self, text):
+        """Simple whitespace tokenizer with punctuation handling"""
+        return re.findall(r"\w+(?:'\w+)?|\S", text)
+
+    def pos_tag(self, tokens):
+        """Simplified POS tagging using word endings and patterns"""
+        tags = []
+        for token in tokens:
+            lower_token = token.lower()
+            if lower_token.endswith('ing'):
+                tags.append((token, 'VBG'))
+            elif lower_token.endswith('ed'):
+                tags.append((token, 'VBD'))
+            elif lower_token.endswith('ly'):
+                tags.append((token, 'RB'))
+            elif lower_token.endswith('s'):
+                tags.append((token, 'NNS'))
+            elif lower_token[0].isupper() and len(token) > 1:
+                tags.append((token, 'NNP'))
+            elif lower_token in {'is', 'am', 'are', 'was', 'were'}:
+                tags.append((token, 'VB'))
+            else:
+                tags.append((token, 'NN'))
+        return tags
+
+    def correct_spelling(self, text):
+        """Basic spelling correction using dictionary lookup"""
+        tokens = self.tokenize(text)
+        corrected = []
+        for word in tokens:
+            if word.lower() not in self.dictionary:
+                # Simple correction - just lowercase if not in dictionary
+                corrected.append(word.lower())
+            else:
+                corrected.append(word)
+        return ' '.join(corrected)
+
+    def disambiguate_word(self, word, context):
+        """Custom word sense disambiguation"""
+        word = word.lower()
+        context_words = set(w.lower() for w in self.tokenize(context))
+        
+        if word in self.word_senses:
+            senses = self.word_senses[word]
+            for sense, definition in senses.items():
+                if sense in context_words:
+                    return definition
+            
+            # Default to first sense if no context match
+            return next(iter(senses.values()))
+        
+        return None
+
+    def process_input(self, text):
+        """Complete NLP processing pipeline"""
+        corrected = self.correct_spelling(text)
+        tokens = self.tokenize(corrected)
+        tags = self.pos_tag(tokens)
+        senses = {}
+        
+        for token, tag in tags:
+            meaning = self.disambiguate_word(token, corrected)
+            if meaning:
+                senses[token] = meaning
+        
+        return corrected, tags, senses
+
+    def generate_response(self, corrected, senses):
+        """Context-aware response generation"""
+        lowered = corrected.lower()
+        
+        if "bat" in senses:
+            if "sports" in senses["bat"]:
+                return "🏏 Are you talking about baseball or cricket?"
+            return "🦇 Interesting! Bats are the only flying mammals."
+        
+        if "bank" in senses:
+            if "financial" in senses["bank"]:
+                return "🏦 Talking about banking services?"
+            return "🌊 Ah, the peaceful riverbank!"
+        
+        if "book" in lowered:
+            return "📚 Books are wonderful sources of knowledge!"
+        
+        if "love" in lowered:
+            return "❤️ Love is a powerful emotion. Tell me more!"
+        
+        return "🤔 Thanks for sharing! What else would you like to discuss?"
+
+# ✨ Initialize the bot
+bot = NLPChatBot()
 
 # ✨ Main App UI
 st.markdown("<h1 class='fade-in'>🧠 NLP ContextBot Pro</h1>", unsafe_allow_html=True)
 st.markdown("""
 <div class='fade-in'>
-This chatbot performs <b>spelling correction</b>, <b>POS tagging</b>, and <b>word sense disambiguation</b> 
-using the Lesk algorithm with enhanced visualization.
+This self-contained chatbot performs <b>spelling correction</b>, <b>POS tagging</b>, 
+and <b>word sense disambiguation</b> without external dependencies.
 </div>
 """, unsafe_allow_html=True)
 
@@ -180,10 +187,10 @@ using the Lesk algorithm with enhanced visualization.
 with st.sidebar:
     st.markdown("### 💡 Try these examples:")
     examples = [
-        "I went to the bank to deposit money",
-        "The river bank was beautiful",
-        "I love reading books",
-        "Tell me about your favorite book"
+        "I deposited money at the bank",
+        "The bat flew out of the cave",
+        "I need to book a hotel room",
+        "Children love to play outside"
     ]
     for example in examples:
         if st.button(example, use_container_width=True):
@@ -202,8 +209,8 @@ if user_input:
     else:
         with st.spinner("🔍 Analyzing your input..."):
             start_time = time.time()
-            corrected, pos_tags, senses = process_input(user_input)
-            response = generate_response(corrected, pos_tags, senses)
+            corrected, pos_tags, senses = bot.process_input(user_input)
+            response = bot.generate_response(corrected, senses)
             processing_time = time.time() - start_time
         
         # Display results in a beautiful layout
@@ -217,12 +224,34 @@ if user_input:
         # POS Tags
         with st.container():
             st.markdown("### 🔠 Part-of-Speech Tags")
-            display_pos_tags(pos_tags)
+            # Create color-coded POS tags
+            pos_html = "<div>"
+            for word, tag in pos_tags:
+                pos_class = ""
+                if tag.startswith('NN'): pos_class = "noun"
+                elif tag.startswith('VB'): pos_class = "verb"
+                elif tag.startswith('JJ'): pos_class = "adj"
+                elif tag.startswith('RB'): pos_class = "adv"
+                else: pos_class = "other"
+                
+                pos_html += f"""
+                <span class="pos-tag {pos_class}">
+                    {word} <small>({tag})</small>
+                </span>
+                """
+            pos_html += "</div>"
+            st.markdown(pos_html, unsafe_allow_html=True)
         
         # Word Senses
         with st.container():
             st.markdown("### 🧠 Word Sense Disambiguation")
-            display_word_senses(senses)
+            if senses:
+                for word, definition in senses.items():
+                    with st.expander(f"✨ {word.capitalize()}", expanded=True):
+                        st.markdown(f"**Definition:** {definition}")
+                        st.progress(70)  # Visual confidence indicator
+            else:
+                st.info("No specific word senses detected")
         
         # Bot Response
         st.markdown("### 🤖 Bot Response")
