@@ -1,31 +1,18 @@
 import streamlit as st
 import nltk
-import os
 from nltk import pos_tag
 from nltk.corpus import wordnet as wn
-from nltk.tokenize import word_tokenize
 from spellchecker import SpellChecker
+from nltk.tokenize import word_tokenize
 
-# ===== Setup NLTK download path =====
-nltk_data_path = os.path.join(os.path.expanduser("~"), "nltk_data")
-os.makedirs(nltk_data_path, exist_ok=True)
-nltk.data.path.append(nltk_data_path)
+# ========== Download NLTK Resources ==========
+# Dynamically downloads into /home/appuser/nltk_data (Streamlit's default writable path)
+nltk.download("punkt")
+nltk.download("averaged_perceptron_tagger")
+nltk.download("wordnet")
+nltk.download("omw-1.4")
 
-# ===== Ensure required NLTK packages are downloaded =====
-required_packages = [
-    "punkt",
-    "averaged_perceptron_tagger",
-    "wordnet",
-    "omw-1.4"
-]
-
-for package in required_packages:
-    try:
-        nltk.data.find(package)
-    except LookupError:
-        nltk.download(package, download_dir=nltk_data_path)
-
-# ===== Spell checker =====
+# ========== Spell Checker ==========
 spell = SpellChecker()
 
 def get_wordnet_pos(treebank_tag):
@@ -96,15 +83,15 @@ def generate_response(corrected, pos_tags, senses):
     else:
         return "Thanks for sharing! What else would you like to talk about?"
 
-# ===== Streamlit UI =====
-st.set_page_config(page_title="NLP ContextBott", page_icon="🧠")
+# ========== Streamlit UI ==========
+st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
 st.title("🧠 NLP ContextBot")
 st.markdown("This bot performs **spelling correction**, **POS tagging**, and **word sense disambiguation** using WordNet.")
 
 user_input = st.text_input("You:", key="input")
 
 if user_input:
-    if user_input.lower() == 'exit':
+    if user_input.lower() == "exit":
         st.markdown("### 👋 Bot: Goodbye!")
     else:
         try:
@@ -116,4 +103,4 @@ if user_input:
             st.markdown(f"**🧠 Word Senses:** `{senses}`")
             st.markdown(f"### 🤖 Bot: {response}")
         except Exception as e:
-            st.error(f"⚠️ Something went wrong: {str(e)}")
+            st.error(f"⚠️ Error: {str(e)}")
