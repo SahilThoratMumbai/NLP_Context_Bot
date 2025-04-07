@@ -1,116 +1,139 @@
 import streamlit as st
-import nltk
-import os
 import re
-from nltk.corpus import wordnet as wn
+from collections import defaultdict
 
-# ========== Setup with Comprehensive Fallbacks ==========
-class FallbackTokenizer:
-    """Simple regex-based tokenizer as fallback"""
-    @staticmethod
-    def tokenize(text):
+# ========== Self-Contained NLP Implementation ==========
+class NLPAnalyzer:
+    def __init__(self):
+        # Custom word senses database
+        self.word_senses = {
+            "bank": {
+                "financial": "a financial institution that accepts deposits",
+                "river": "sloping land beside a body of water"
+            },
+            "book": {
+                "reading": "a written or printed work",
+                "reserve": "to arrange for something in advance"
+            },
+            "bat": {
+                "animal": "a flying mammal",
+                "sports": "a club used in baseball"
+            }
+        }
+        
+        # POS tag mapping
+        self.pos_tags = {
+            'NN': 'NOUN', 'VB': 'VERB', 'JJ': 'ADJ', 'RB': 'ADV',
+            'NNS': 'NOUN', 'VBD': 'VERB', 'VBG': 'VERB', 'VBN': 'VERB',
+            'VBP': 'VERB', 'VBZ': 'VERB', 'JJR': 'ADJ', 'JJS': 'ADJ',
+            'RBR': 'ADV', 'RBS': 'ADV'
+        }
+        
+        # Common words for basic spell checking
+        self.common_words = {
+            'hello', 'hi', 'bank', 'book', 'love', 'river',
+            'money', 'financial', 'water', 'read', 'animal'
+        }
+
+    def tokenize(self, text):
+        """Simple whitespace tokenizer with punctuation handling"""
         return re.findall(r"\w+(?:'\w+)?|\S", text)
 
-# Configure NLTK with multiple fallback options
-nltk_data_paths = [
-    os.path.join(os.getcwd(), "nltk_data"),  # Current directory
-    "/tmp/nltk_data",                        # Temp directory
-    os.path.join(os.path.expanduser("~"), "nltk_data")  # Home directory
-]
-
-for path in nltk_data_paths:
-    try:
-        os.makedirs(path, exist_ok=True)
-        nltk.data.path.append(path)
-    except:
-        continue
-
-# Download critical resources with retries
-resources = [
-    ('punkt', 'tokenizers/punkt'),
-    ('averaged_perceptron_tagger', 'taggers/averaged_perceptron_tagger'),
-    ('wordnet', 'corpora/wordnet'),
-    ('omw-1.4', 'corpora/omw-1.4')
-]
-
-for resource, path in resources:
-    max_retries = 2
-    for _ in range(max_retries):
-        try:
-            nltk.data.find(path)
-            break
-        except LookupError:
-            try:
-                nltk.download(resource, download_dir=nltk_data_paths[0])
-                break
-            except:
-                continue
-
-# ========== NLP Functions with Fallbacks ==========
-def get_tokenizer():
-    """Returns the best available tokenizer"""
-    try:
-        nltk.data.find('tokenizers/punkt')
-        return nltk.word_tokenize
-    except:
-        return FallbackTokenizer.tokenize
-
-word_tokenize = get_tokenizer()
-
-def get_wordnet_pos(treebank_tag):
-    mappings = {
-        'J': wn.ADJ,
-        'V': wn.VERB,
-        'N': wn.NOUN,
-        'R': wn.ADV
-    }
-    return mappings.get(treebank_tag[0], wn.NOUN)
-
-def process_text(text):
-    tokens = word_tokenize(text)
-    tags = nltk.pos_tag(tokens) if hasattr(nltk, 'pos_tag') else [(token, '') for token in tokens]
-    
-    senses = {}
-    for word, tag in tags:
-        wn_pos = get_wordnet_pos(tag)
-        if word.lower() == "bank":
-            senses[word] = "financial" if any(w in text.lower() for w in ["money", "account"]) else "river"
-        else:
-            try:
-                synsets = wn.synsets(word, pos=wn_pos)
-                if synsets:
-                    senses[word] = synsets[0].definition()
-            except:
-                continue
-    
-    return tokens, tags, senses
-
-# ========== Streamlit UI ==========
-st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
-st.title("🧠 NLP ContextBot")
-
-user_input = st.text_input("Enter your text (type 'exit' to quit):")
-
-if user_input and user_input.lower() != 'exit':
-    try:
-        with st.spinner("Analyzing..."):
-            tokens, tags, senses = process_text(user_input)
-            
-            st.subheader("Results")
-            st.json({
-                "tokens": tokens,
-                "tags": tags,
-                "senses": senses
-            })
-            
-            if senses:
-                st.success("Analysis completed successfully!")
+    def pos_tag(self, tokens):
+        """Simplified POS tagging using word endings and common patterns"""
+        tags = []
+        for token in tokens:
+            lower_token = token.lower()
+            if lower_token.endswith('ing'):
+                tags.append((token, 'VBG'))
+            elif lower_token.endswith('ed'):
+                tags.append((token, 'VBD'))
+            elif lower_token.endswith('ly'):
+                tags.append((token, 'RB'))
+            elif lower_token.endswith('s'):
+                tags.append((token, 'NNS'))
+            elif lower_token[0].isupper() and len(token) > 1:
+                tags.append((token, 'NNP'))
+            elif lower_token in {'is', 'am', 'are', 'was', 'were'}:
+                tags.append((token, 'VB'))
             else:
-                st.info("No word senses detected - try more specific words")
-                
-    except Exception as e:
-        st.error(f"Analysis error: {str(e)}")
-        st.info("This simple version uses fallback methods when NLTK resources aren't available")
+                tags.append((token, 'NN'))
+        return tags
 
-elif user_input.lower() == 'exit':
-    st.success("Goodbye! Refresh the page to start over.")
+    def get_senses(self, word, context):
+        """Custom word sense disambiguation"""
+        word = word.lower()
+        context_words = set(w.lower() for w in self.tokenize(context))
+        
+        if word in self.word_senses:
+            senses = self.word_senses[word]
+            for sense, definition in senses.items():
+                if sense in context_words:
+                    return {word: definition}
+            
+            # Default to first sense if no context match
+            return {word: next(iter(senses.values()))}
+        
+        return {}
+
+    def analyze(self, text):
+        """Complete text analysis pipeline"""
+        tokens = self.tokenize(text)
+        tags = self.pos_tag(tokens)
+        senses = {}
+        
+        for token, tag in tags:
+            senses.update(self.get_senses(token, text))
+        
+        return {
+            "tokens": tokens,
+            "pos_tags": [(token, self.pos_tags.get(tag, 'NOUN')) for token, tag in tags],
+            "word_senses": senses
+        }
+
+# ========== Streamlit Application ==========
+def main():
+    st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
+    st.title("🧠 NLP ContextBot")
+    st.markdown("""
+    This self-contained version uses custom NLP processing without external dependencies.
+    It demonstrates word sense disambiguation for a limited vocabulary.
+    """)
+    
+    analyzer = NLPAnalyzer()
+    
+    user_input = st.text_input("Enter your text (try words like 'bank', 'book', or 'bat'):")
+    
+    if user_input:
+        if user_input.lower() == 'exit':
+            st.success("Goodbye! Refresh the page to start over.")
+        else:
+            with st.spinner("Analyzing..."):
+                results = analyzer.analyze(user_input)
+                
+                st.subheader("Results")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("**Tokens:**", results["tokens"])
+                    st.write("**POS Tags:**", results["pos_tags"])
+                
+                with col2:
+                    st.write("**Word Senses:**")
+                    if results["word_senses"]:
+                        for word, sense in results["word_senses"].items():
+                            st.write(f"- {word}: {sense}")
+                    else:
+                        st.write("No known word senses detected")
+                
+                # Context-aware response
+                if "bank" in results["word_senses"]:
+                    if "financial" in results["word_senses"]["bank"]:
+                        st.success("I see you're talking about money matters!")
+                    else:
+                        st.success("Ah, the riverbank - nature is beautiful!")
+                elif any(word in results["word_senses"] for word in ["book", "bat"]):
+                    st.success("Interesting choice of words!")
+
+if __name__ == "__main__":
+    main()
