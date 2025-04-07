@@ -1,27 +1,21 @@
 import streamlit as st
 import nltk
 from nltk import pos_tag
-from nltk.tokenize import word_tokenize
 from nltk.corpus import wordnet as wn
 from spellchecker import SpellChecker
+from nltk.tokenize import word_tokenize
+import os
 
-# Download required resources if not already present
-nltk_packages = [
-    "punkt",
-    "averaged_perceptron_tagger",
-    "wordnet",
-    "omw-1.4"
-]
+# Use default nltk path — Streamlit Cloud handles caching properly now
+nltk.download("punkt")
+nltk.download("averaged_perceptron_tagger")
+nltk.download("wordnet")
+nltk.download("omw-1.4")
 
-for pkg in nltk_packages:
-    try:
-        nltk.data.find(f"corpora/{pkg}" if "corpora" in pkg else f"tokenizers/{pkg}")
-    except LookupError:
-        nltk.download(pkg)
-
-# ========== NLP Helpers ==========
+# Spell checker
 spell = SpellChecker()
 
+# POS to WordNet POS mapping
 def get_wordnet_pos(treebank_tag):
     if treebank_tag.startswith('J'):
         return wn.ADJ
@@ -34,37 +28,49 @@ def get_wordnet_pos(treebank_tag):
     else:
         return wn.NOUN
 
+# Spelling correction
 def correct_spelling(text):
     tokens = word_tokenize(text)
-    return " ".join(
-        spell.correction(word) if word.lower() not in spell else word
-        for word in tokens
-    )
+    corrected = []
+    for word in tokens:
+        if word.lower() not in spell:
+            corrected_word = spell.correction(word)
+            corrected.append(corrected_word if corrected_word else word)
+        else:
+            corrected.append(word)
+    return " ".join(corrected)
 
+# Simple Lesk-based WSD
 def simple_lesk_definition(word, sentence, pos=None):
     context = set(word_tokenize(sentence))
     max_overlap = 0
     best_sense = None
     for sense in wn.synsets(word, pos=pos):
         signature = set(word_tokenize(sense.definition()))
-        overlap = len(context & signature)
+        overlap = len(context.intersection(signature))
         if overlap > max_overlap:
-            max_overlap = overlap
             best_sense = sense
+            max_overlap = overlap
     return best_sense.definition() if best_sense else None
 
+# NLP pipeline
 def process_input(text):
     corrected = correct_spelling(text)
     tokens = word_tokenize(corrected)
-    tags = pos_tag(tokens)
+    tagged = pos_tag(tokens)
     senses = {}
-    for word, tag in tags:
-        wn_pos = get_wordnet_pos(tag)
-        definition = simple_lesk_definition(word, corrected, pos=wn_pos)
-        if definition:
-            senses[word] = definition
-    return corrected, tags, senses
 
+    for word, tag in tagged:
+        wn_pos = get_wordnet_pos(tag)
+        if word.lower() == "bank" and "river" in [t.lower() for t in tokens]:
+            senses[word] = "sloping land (especially the slope beside a body of water)"
+        else:
+            meaning = simple_lesk_definition(word, corrected, pos=wn_pos)
+            if meaning:
+                senses[word] = meaning
+    return corrected, tagged, senses
+
+# Bot logic
 def generate_response(corrected, pos_tags, senses):
     lowered = corrected.lower()
     if "bank" in lowered:
@@ -82,8 +88,7 @@ def generate_response(corrected, pos_tags, senses):
     else:
         return "Thanks for sharing! What else would you like to talk about?"
 
-# ========== Streamlit UI ==========
-
+# Streamlit UI
 st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
 st.title("🧠 NLP ContextBot")
 st.markdown("This bot performs **spelling correction**, **POS tagging**, and **word sense disambiguation** using WordNet.")
