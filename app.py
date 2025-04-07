@@ -5,8 +5,12 @@ from nltk import pos_tag
 from nltk.corpus import wordnet as wn
 from pywsd.lesk import cosine_lesk  # ✅ smarter Lesk
 from spellchecker import SpellChecker
+import os
 
-# Download NLTK resources
+# Add local nltk_data path (for deployed environments)
+nltk.data.path.append("./nltk_data")
+
+# Download resources (safe for local use)
 nltk.download('punkt')
 nltk.download('averaged_perceptron_tagger')
 nltk.download('wordnet')
@@ -32,7 +36,13 @@ def get_wordnet_pos(treebank_tag):
 # Spelling correction
 def correct_spelling(text):
     tokens = word_tokenize(text)
-    corrected_tokens = [spell.correction(word) if word not in spell else word for word in tokens]
+    corrected_tokens = []
+    for word in tokens:
+        if word.lower() not in spell:
+            corrected = spell.correction(word)
+            corrected_tokens.append(corrected if corrected else word)
+        else:
+            corrected_tokens.append(word)
     return ' '.join(corrected_tokens)
 
 # Main NLP processing
@@ -44,19 +54,19 @@ def process_input(user_input):
 
     for word, tag in pos_tags:
         wn_pos = get_wordnet_pos(tag)
-        # Manual override for "bank" near "river"
         if word.lower() == "bank" and "river" in [t.lower() for t in tokens]:
             disambiguated[word] = "sloping land (especially the slope beside a body of water)"
         else:
-            context = ' '.join(tokens)  # ✅ FIX: Convert token list to string
+            context = ' '.join(tokens)
             sense = cosine_lesk(context, word, pos=wn_pos)
             if sense:
                 disambiguated[word] = sense.definition()
     return corrected, pos_tags, disambiguated
 
-# Response generation
+# Bot response generation
 def generate_response(corrected, pos_tags, senses):
-    if "bank" in corrected:
+    lowered = corrected.lower()
+    if "bank" in lowered:
         meaning = senses.get("bank", "")
         if "financial" in meaning or "money" in meaning:
             return "Are you talking about a financial institution?"
@@ -64,27 +74,28 @@ def generate_response(corrected, pos_tags, senses):
             return "Oh! You mean a river bank. Sounds peaceful."
         else:
             return "Which type of bank are you referring to?"
-    elif "book" in corrected:
+    elif "book" in lowered:
         return "Books are a great source of knowledge!"
-    elif "love" in corrected:
+    elif "love" in lowered:
         return "Love is a beautiful emotion. Tell me more!"
     else:
         return "Thanks for sharing! What else would you like to talk about?"
 
 # Streamlit UI
+st.set_page_config(page_title="NLP ContextBot", page_icon="🧠")
 st.title("🧠 NLP ContextBot")
-st.write("This chatbot performs spelling correction, POS tagging, and improved word sense disambiguation.")
+st.markdown("This chatbot performs **spelling correction**, **POS tagging**, and **word sense disambiguation** using Lesk algorithm.")
 
 user_input = st.text_input("You:", key="input")
 
 if user_input:
     if user_input.lower() == 'exit':
-        st.write("Bot: Goodbye!")
+        st.markdown("### 👋 Bot: Goodbye!")
     else:
         corrected, pos_tags, senses = process_input(user_input)
         response = generate_response(corrected, pos_tags, senses)
 
-        st.markdown(f"**Corrected Input:** `{corrected}`")
-        st.markdown(f"**POS Tags:** `{pos_tags}`")
-        st.markdown(f"**Word Senses:** `{senses}`")
+        st.markdown(f"**🔤 Corrected Input:** `{corrected}`")
+        st.markdown(f"**🔠 POS Tags:** `{pos_tags}`")
+        st.markdown(f"**🧠 Word Senses:** `{senses}`")
         st.markdown(f"### 🤖 Bot: {response}")
